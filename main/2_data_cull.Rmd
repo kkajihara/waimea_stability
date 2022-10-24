@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ggplot2)
 library(ggpubr)
+library(phyloseq)
 
 ```
 
@@ -259,7 +260,7 @@ saveRDS(culled_abun, "../intermediates/culled_asv_table.rds")
 
 
 # cull tax table
-culled_tax <- tax[tax$OTU %in% rownames(culled_abun),]
+culled_tax <- tax[rownames(tax) %in% rownames(culled_abun),]
 
 saveRDS(culled_tax, "../intermediates/culled_tax_table.rds")
 
