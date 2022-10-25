@@ -15,9 +15,11 @@ setwd("~/cmaiki_lts/kaciekaj/waimea")
 # habitat: terrestrial
 
 # read in data
-culled_abun <- readRDS("stuff_to_scp/culled_asv_table.rds")
+culled_abun <- readRDS("../intermediates/culled_asv_table.rds")
 #culled_tax <- readRDS("stuff_to_scp/culled_tax_table.rds")
-culled_meta <- readRDS("stuff_to_scp/culled_metadata.rds")
+culled_meta <- readRDS("../intermediates/culled_metadata.rds")
+
+culled_meta <- data.frame(culled_meta)
 
 # # plant
 # plant_terr_sums <- readRDS("stuff_to_scp/plant_terrestrial_asv_sums.rds")
@@ -82,50 +84,6 @@ parallel_rarefaction <- function(data){
 # time_par - proc.time() 
 
 
-### the real thing!
-
-## stream
-
-plant_terr_sums <- subset_for_curves(metadata = culled_meta,
-                                       asv_table = culled_abun,
-                                       comm = "plant",
-                                       habitat = "Terrestrial")
-
-anim_terr_sums <- subset_for_curves(metadata = culled_meta,
-                                      asv_table = culled_abun,
-                                      comm = "animal",
-                                      habitat = "Terrestrial")
-
-env_terr_sums <- subset_for_curves(metadata = culled_meta,
-                                     asv_table = culled_abun,
-                                     comm = "environmental",
-                                     habitat = "Terrestrial")
-
-# make list
-terr <- list(plant_terr_sums, anim_terr_sums, env_terr_sums)
-names(terr) <- c("Primary Producer", "Animal", "Environmental")
-
-
-# inext_result <- pbmclapply(terrestrial, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 11:23
-
-
-
-## curves
-
-
-terr_nonpar <- iNEXT(terr, nboot = 200) 
-
-saveRDS(terr_nonpar, "hpc_outputs/terrestrial_inext_results.rds")
-
-ggiNEXT(terr_nonpar)
-
-
-
-
-### other habitats
-
-
-
 
 
 # function for subsetting data and getting ASV sums
@@ -177,6 +135,74 @@ subset_for_curves <- function(metadata, asv_table, comm, habitat) {
 }
 
 
+
+
+### the real thing!
+
+## stream
+
+plant_terr_sums <- subset_for_curves(metadata = culled_meta,
+                                       asv_table = culled_abun,
+                                       comm = "plant",
+                                       habitat = "Terrestrial")
+
+anim_terr_sums <- subset_for_curves(metadata = culled_meta,
+                                      asv_table = culled_abun,
+                                      comm = "animal",
+                                      habitat = "Terrestrial")
+
+env_terr_sums <- subset_for_curves(metadata = culled_meta,
+                                     asv_table = culled_abun,
+                                     comm = "environmental",
+                                     habitat = "Terrestrial")
+
+# make list
+terr <- list(plant_terr_sums, anim_terr_sums, env_terr_sums)
+names(terr) <- c("Primary Producer", "Animal", "Environmental")
+
+
+# inext_result <- pbmclapply(terrestrial, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 11:23
+
+
+
+## curves
+
+
+terr_nonpar <- iNEXT(terr, nboot = 200) 
+
+saveRDS(terr_nonpar, "hpc_outputs/terrestrial_inext_results.rds")
+
+ggiNEXT(terr_nonpar)
+
+
+
+############## what is driving the high diversity of terrestrial primary producers #################
+
+
+pp_met <- culled_meta[which(culled_meta$trophic=="PrimaryProducer" & culled_meta$habitat=="Terrestrial"),]
+
+pp_types <- unique(pp_met$sample_type)
+
+
+pp_terr_list <- list()
+
+for (a_type in pp_types) {
+  
+  sub_df <- pp_met[which(pp_met$sample_type==a_type),][["sequencing_id"]]
+  
+  sub_asvs <- culled_abun[,names(culled_abun) %in% sub_df]
+  
+  sub_asvs <- sub_asvs[rowSums(sub_asvs)>0,]
+
+  pp_terr_list[[a_type]] <- rowSums(sub_asvs)   
+  
+}
+
+terr_plant_curves <- iNEXT(pp_terr_list, nboot = 200)
+ 
+
+
+### other habitats
 
 
 ## stream
