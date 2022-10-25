@@ -6,6 +6,8 @@
 # library(devtools)
 # install_version("iNEXT", version = "2.0.19")
 library(iNEXT)
+library(job)
+library(ggplot2)
 
 
 setwd("~/cmaiki_lts/kaciekaj/waimea")
@@ -21,31 +23,24 @@ culled_meta <- readRDS("../intermediates/culled_metadata.rds")
 
 culled_meta <- data.frame(culled_meta)
 
-# # plant
-# plant_terr_sums <- readRDS("stuff_to_scp/plant_terrestrial_asv_sums.rds")
-# 
-# # animal
-# animal_terr_sums <- readRDS("stuff_to_scp/animal_terrestrial_asv_sums.rds")
-
-
 # to run in parallel following abrown435's example
 # data must be converted so each sample is a matrix and then each sample is a member of a list
 # then run the function in pbmclapply and do whatever downstream processes in iNEXT you need to do
 
 # I think my data is already in this format
 
-library(parallel)
-library(pbmcapply)
-
-Max_CPU_Cores = detectCores()
-Upper_Limit_CPU_Cores = 2*round((Max_CPU_Cores*0.9)/2)
-# Parallel Rarefaction Function
-# This is a working parallelized function of iNEXT. 5x faster than previously
-parallel_rarefaction <- function(data){
-  out_df <- iNEXT(data, q=0, datatype="abundance")
-  #df <- fortify.iNEXT(out_df, type=1)
-  return(out_df)
-}
+# library(parallel)
+# library(pbmcapply)
+# 
+# Max_CPU_Cores = detectCores()
+# Upper_Limit_CPU_Cores = 2*round((Max_CPU_Cores*0.9)/2)
+# # Parallel Rarefaction Function
+# # This is a working parallelized function of iNEXT. 5x faster than previously
+# parallel_rarefaction <- function(data){
+#   out_df <- iNEXT(data, q=0, datatype="abundance")
+#   #df <- fortify.iNEXT(out_df, type=1)
+#   return(out_df)
+# }
 
 
 
@@ -167,44 +162,15 @@ names(terr) <- c("Primary Producer", "Animal", "Environmental")
 
 ## curves
 
+job::job({
+  terr_nonpar <- iNEXT(terr, nboot = 200, endpoint = 100000000) 
+})
 
-terr_nonpar <- iNEXT(terr, nboot = 200) 
 
-saveRDS(terr_nonpar, "hpc_outputs/terrestrial_inext_results.rds")
+saveRDS(terr_nonpar, "../outputs/terrestrial_inext_results_new_endpoint.rds")
 
 ggiNEXT(terr_nonpar)
 
-
-
-############## what is driving the high diversity of terrestrial primary producers #################
-
-
-pp_met <- culled_meta[which(culled_meta$trophic=="PrimaryProducer" & culled_meta$habitat=="Terrestrial"),]
-
-pp_types <- unique(pp_met$sample_type)
-
-
-pp_terr_list <- list()
-
-for (a_type in pp_types) {
-  
-  sub_df <- pp_met[which(pp_met$sample_type==a_type),][["sequencing_id"]]
-  
-  sub_asvs <- culled_abun[,names(culled_abun) %in% sub_df]
-  
-  sub_asvs <- sub_asvs[rowSums(sub_asvs)>0,]
-
-  pp_terr_list[[a_type]] <- rowSums(sub_asvs)   
-  
-}
-
-terr_plant_curves <- iNEXT(pp_terr_list, nboot = 200)
- 
-saveRDS(terr_plant_curves, "../outputs/terrestrial_plant_inext_results.rds")
-
-ggiNEXT(terr_plant_curves)
-
-save.image(file="../plant_accum_curves_workspace.RData")
 
 
 ### other habitats
@@ -235,10 +201,14 @@ names(stream) <- c("Primary Producer", "Animal", "Environmental")
 
 # run parallelized function from before
 # stream_result <- pbmclapply(stream, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 4:13
-stream_nonpar <- iNEXT(stream, nboot = 200)
-saveRDS(stream_nonpar, "hpc_outputs/stream_inext_results.rds")
 
+job::job({
+  stream_nonpar <- iNEXT(stream, nboot = 200, endpoint = 30000000)
+})
 
+saveRDS(stream_nonpar, "../outputs/stream_inext_results_new_endpoint.rds")
+
+ggiNEXT(stream_nonpar)
 
 
 ## marine
@@ -266,10 +236,10 @@ names(marine) <- c("Primary Producer", "Animal", "Environmental")
 
 # run parallelized function from before
 # marine_result <- pbmclapply(marine, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 1:28
-marine_nonpar <- iNEXT(marine, nboot = 200)
-saveRDS(marine_nonpar, "hpc_outputs/marine_inext_results.rds")
+marine_nonpar <- iNEXT(marine, nboot = 200, endpoint = 15000000)
+saveRDS(marine_nonpar, "../outputs/marine_inext_results_new_endpoint.rds")
 
-
+ggiNEXT(marine_nonpar)
 
 
 
@@ -277,9 +247,9 @@ saveRDS(marine_nonpar, "hpc_outputs/marine_inext_results.rds")
 # plots
 
 
-mar_inext <- readRDS("hpc_outputs/marine_inext_results.rds")
-str_inext <- readRDS("hpc_outputs/stream_inext_results.rds")
-ter_inext <- readRDS("hpc_outputs/terrestrial_inext_results.rds")
+mar_inext <- readRDS("../outputs/marine_inext_results_new_endpoint.rds")
+str_inext <- readRDS("../outputs/stream_inext_results_new_endpoint.rds")
+ter_inext <- readRDS("../outputs/terrestrial_inext_results_new_endpoint.rds")
 
 
 marine_accum_curve <- ggiNEXT(mar_inext) +
@@ -346,10 +316,67 @@ all_accum <- ggarrange(terr_accum_curve,
                        marine_accum_curve, 
                        ncol = 3, 
                        common.legend = TRUE, 
-                       legend = "bottom")
+                       legend = "bottom") + bgcolor("white")
 
-ggsave("hpc_outputs/all_accumulation_curves.png", width = )
+# options(bitmapType='cairo')
+ggsave("../outputs/all_accumulation_curves_new_endpoint.png", width = 15, height = 5)
+
+# things to fix in plot: need right side margin on stream and marine plots, 
+# don't cut off x axis labelss
 
 
+
+############## what is driving the high diversity of terrestrial primary producers #################
+
+
+pp_met <- culled_meta[which(culled_meta$trophic=="PrimaryProducer" & culled_meta$habitat=="Terrestrial"),]
+
+pp_types <- unique(pp_met$sample_type)
+
+
+pp_terr_list <- list()
+
+for (a_type in pp_types) {
+  
+  sub_df <- pp_met[which(pp_met$sample_type==a_type),][["sequencing_id"]]
+  
+  sub_asvs <- culled_abun[,names(culled_abun) %in% sub_df]
+  
+  sub_asvs <- sub_asvs[rowSums(sub_asvs)>0,]
+  
+  pp_terr_list[[a_type]] <- rowSums(sub_asvs)   
+  
+}
+
+terr_plant_curves <- iNEXT(pp_terr_list, nboot = 200)
+
+saveRDS(terr_plant_curves, "../outputs/terrestrial_plant_inext_results.rds")
+
+ggiNEXT(terr_plant_curves)
+
+# plot the plant terrestrial curves
+
+terr_plant_curve_plot <- ggiNEXT(terr_plant_curves) +
+  theme_classic() +
+  ggtitle("Terrestrial Primary Producers by Sample Type") +
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 16,
+                                  face = "bold",
+                                  margin = margin(0,0,20,0)),
+        axis.title.x = element_text(vjust=-2),
+        axis.title.y = element_text(vjust=2),
+        legend.position = "bottom") +
+  scale_shape_manual(values = rep(19, length(pp_types))) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme(plot.margin = margin(20,0,20,5)) +
+  scale_y_continuous(limits=c(0,9000), breaks=seq(0,9000, by = 1500)) +
+  xlab("Number of sequences") +
+  ylab("ASV richness")
+
+# options(bitmapType='cairo')
+ggsave("../outputs/terrestrial_plant_curves.png", width = 14, height = 8)
+
+save.image(file="../plant_accum_curves_workspace.RData")
 
 
