@@ -200,6 +200,11 @@ for (a_type in pp_types) {
 
 terr_plant_curves <- iNEXT(pp_terr_list, nboot = 200)
  
+saveRDS(terr_plant_curves, "../outputs/terrestrial_plant_inext_results.rds")
+
+ggiNEXT(terr_plant_curves)
+
+save.image(file="../plant_accum_curves_workspace.RData")
 
 
 ### other habitats
