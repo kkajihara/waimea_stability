@@ -264,7 +264,7 @@ marine_accum_curve <- ggiNEXT(mar_inext) +
   scale_shape_manual(values = c(19,19,19)) +
   scale_color_brewer(palette = "Set2") +
   scale_fill_brewer(palette = "Set2") +
-  theme(plot.margin = margin(20,0,20,5)) +
+  theme(plot.margin = margin(20,30,20,5)) +
   scale_y_continuous(limits=c(0,6000), breaks=seq(0,6000, by = 2000)) +
   xlab("Number of sequences") +
   ylab("ASV richness")
@@ -282,7 +282,8 @@ terr_accum_curve <- ggiNEXT(ter_inext) +
   scale_shape_manual(values = c(19,19,19)) +
   scale_color_brewer(palette = "Set2") +
   scale_fill_brewer(palette = "Set2") +
-  theme(plot.margin = margin(20,0,20,5)) +
+  theme(plot.margin = margin(20,5,20,5)) +
+  #scale_x_continuous(limits=c(100000000), breaks=seq(0,100000000, by = 25000000)) +
   scale_y_continuous(limits=c(0,30000), breaks=seq(0,30000, by = 10000)) +
   xlab("Number of sequences") +
   ylab("ASV richness")
@@ -300,7 +301,7 @@ stream_accum_curve <- ggiNEXT(str_inext) +
   scale_shape_manual(values = c(19,19,19)) +
   scale_color_brewer(palette = "Set2") +
   scale_fill_brewer(palette = "Set2") +
-  theme(plot.margin = margin(20,0,20,5)) +
+  theme(plot.margin = margin(20,10,20,5)) +
   #scale_y_continuous(limits=c(0,30000), breaks=seq(0,30000, by = 10000)) +
   xlab("Number of sequences") +
   ylab("ASV richness")
@@ -319,10 +320,10 @@ all_accum <- ggarrange(terr_accum_curve,
                        legend = "bottom") + bgcolor("white")
 
 # options(bitmapType='cairo')
-ggsave("../outputs/all_accumulation_curves_new_endpoint.png", width = 15, height = 5)
+ggsave("../outputs/all_accumulation_curves_new_endpoint.png", width = 16, height = 5)
 
 # things to fix in plot: need right side margin on stream and marine plots, 
-# don't cut off x axis labelss
+# don't cut off x axis labels
 
 
 
