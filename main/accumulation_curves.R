@@ -79,6 +79,7 @@ culled_meta <- data.frame(culled_meta)
 # time_par - proc.time() 
 
 
+consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
 
 
 # function for subsetting data and getting ASV sums
@@ -87,7 +88,7 @@ subset_for_curves <- function(metadata, asv_table, comm, habitat) {
   
   if (comm=="plant") {
     
-    sub_df <- metadata[metadata$trophic=="PrimaryProducer" & metadata$habitat==habitat,][["sequencing_id"]]
+    sub_df <- metadata[which(metadata$trophic=="PrimaryProducer" & metadata$habitat==habitat),][["sequencing_id"]]
     
     asvs <- asv_table[,names(asv_table) %in% sub_df]
     # remove empty ASVs
@@ -99,9 +100,9 @@ subset_for_curves <- function(metadata, asv_table, comm, habitat) {
     
   }
   
-  else if (comm=="animal") {
+  else if (comm=="consumer") {
     
-    sub_df <- metadata[metadata$host=="Animal" & metadata$habitat==habitat,][["sequencing_id"]]
+    sub_df <- metadata[which(metadata$trophic %in% consumers & metadata$habitat==habitat),][["sequencing_id"]]
     
     asvs <- asv_table[,names(asv_table) %in% sub_df]
     # remove empty ASVs
@@ -115,7 +116,7 @@ subset_for_curves <- function(metadata, asv_table, comm, habitat) {
   
   else {
     
-    sub_df <- metadata[metadata$trophic=="Environmental" & metadata$habitat==habitat,][["sequencing_id"]]
+    sub_df <- metadata[which(metadata$trophic=="Environmental" & metadata$habitat==habitat),][["sequencing_id"]]
     
     asvs <- asv_table[,names(asv_table) %in% sub_df]
     # remove empty ASVs
@@ -141,9 +142,9 @@ plant_terr_sums <- subset_for_curves(metadata = culled_meta,
                                        comm = "plant",
                                        habitat = "Terrestrial")
 
-anim_terr_sums <- subset_for_curves(metadata = culled_meta,
+cons_terr_sums <- subset_for_curves(metadata = culled_meta,
                                       asv_table = culled_abun,
-                                      comm = "animal",
+                                      comm = "consumer",
                                       habitat = "Terrestrial")
 
 env_terr_sums <- subset_for_curves(metadata = culled_meta,
@@ -152,8 +153,8 @@ env_terr_sums <- subset_for_curves(metadata = culled_meta,
                                      habitat = "Terrestrial")
 
 # make list
-terr <- list(plant_terr_sums, anim_terr_sums, env_terr_sums)
-names(terr) <- c("Primary Producer", "Animal", "Environmental")
+terr <- list(plant_terr_sums, cons_terr_sums, env_terr_sums)
+names(terr) <- c("Primary Producer", "Consumer", "Environmental")
 
 
 # inext_result <- pbmclapply(terrestrial, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 11:23
@@ -183,9 +184,9 @@ plant_stream_sums <- subset_for_curves(metadata = culled_meta,
                                        comm = "plant",
                                        habitat = "Riverine")
 
-anim_stream_sums <- subset_for_curves(metadata = culled_meta,
+cons_stream_sums <- subset_for_curves(metadata = culled_meta,
                                       asv_table = culled_abun,
-                                      comm = "animal",
+                                      comm = "consumer",
                                       habitat = "Riverine")
 
 env_stream_sums <- subset_for_curves(metadata = culled_meta,
@@ -195,8 +196,8 @@ env_stream_sums <- subset_for_curves(metadata = culled_meta,
 
 
 # make list
-stream <- list(plant_stream_sums, anim_stream_sums, env_stream_sums)
-names(stream) <- c("Primary Producer", "Animal", "Environmental")
+stream <- list(plant_stream_sums, cons_stream_sums, env_stream_sums)
+names(stream) <- c("Primary Producer", "Consumer", "Environmental")
 
 
 # run parallelized function from before
@@ -218,10 +219,22 @@ plant_marine_sums <- subset_for_curves(metadata = culled_meta,
                                        comm = "plant",
                                        habitat = "Marine")
 
-anim_marine_sums <- subset_for_curves(metadata = culled_meta,
-                                      asv_table = culled_abun,
-                                      comm = "animal",
-                                      habitat = "Marine")
+# anim_marine_sums <- subset_for_curves(metadata = culled_meta,
+#                                       asv_table = culled_abun,
+#                                       comm = "animal",
+#                                       habitat = "Marine")
+
+# special treatment for consumers in marine - no consumers only "Unknown" but most of these are inverts, sponges, etc.
+
+marine_consumer <- culled_meta[which(culled_meta$habitat=="Marine" & culled_meta$trophic=="Unknown"),][["sequencing_id"]]
+
+marcon_asvs <- culled_abun[,names(culled_abun) %in% marine_consumer]
+
+# remove empty ASVs
+marcon_asvs <- marcon_asvs[rowSums(marcon_asvs)>0,]
+# get row sums
+marcon_asv_sums <- rowSums(marcon_asvs)
+
 
 env_marine_sums <- subset_for_curves(metadata = culled_meta,
                                      asv_table = culled_abun,
@@ -230,13 +243,17 @@ env_marine_sums <- subset_for_curves(metadata = culled_meta,
 
 
 # make list
-marine <- list(plant_marine_sums, anim_marine_sums, env_marine_sums)
-names(marine) <- c("Primary Producer", "Animal", "Environmental")
+marine <- list(plant_marine_sums, marcon_asv_sums, env_marine_sums)
+names(marine) <- c("Primary Producer", "Consumer", "Environmental")
 
 
 # run parallelized function from before
 # marine_result <- pbmclapply(marine, parallel_rarefaction, mc.cores = Upper_Limit_CPU_Cores) # 1:28
-marine_nonpar <- iNEXT(marine, nboot = 200, endpoint = 15000000)
+
+job::job({
+  marine_nonpar <- iNEXT(marine, nboot = 200, endpoint = 15000000)
+})
+
 saveRDS(marine_nonpar, "../outputs/marine_inext_results_new_endpoint.rds")
 
 ggiNEXT(marine_nonpar)
@@ -312,15 +329,19 @@ save.image(file="accum_curves_workspace.RData")
 
 library(ggpubr)
 
-all_accum <- ggarrange(terr_accum_curve, 
-                       stream_accum_curve, 
-                       marine_accum_curve, 
-                       ncol = 3, 
-                       common.legend = TRUE, 
+all_accum <- ggarrange(terr_accum_curve,
+                       stream_accum_curve,
+                       marine_accum_curve,
+                       ncol = 3,
+                       common.legend = TRUE,
                        legend = "bottom") + bgcolor("white")
 
+
+
+
 # options(bitmapType='cairo')
-ggsave("../outputs/all_accumulation_curves_new_endpoint.png", width = 16, height = 5)
+options(scipen=9999)
+ggsave("../figures/all_accumulation_curves_new_endpoint.png", width = 16, height = 5)
 
 # things to fix in plot: need right side margin on stream and marine plots, 
 # don't cut off x axis labels
@@ -379,5 +400,22 @@ terr_plant_curve_plot <- ggiNEXT(terr_plant_curves) +
 ggsave("../outputs/terrestrial_plant_curves.png", width = 14, height = 8)
 
 save.image(file="../plant_accum_curves_workspace.RData")
+
+
+# looking at the numbers
+terr_plant_curves_all <- readRDS("../outputs/terrestrial_plant_inext_results.rds")
+
+terr_plant_inext_df <- data.frame(terr_plant_curves_all$DataInfo[,1:3])
+
+terr_plant_inext_df <- terr_plant_inext_df[order(-terr_plant_inext_df$S.obs),]
+
+names(terr_plant_inext_df) <- c("Sample Type", "Number of Sequences", "ASV Richness")
+
+
+
+
+
+
+
 
 

@@ -40,10 +40,11 @@ meta <- data.frame(readRDS("../intermediates/culled_metadata.rds"))
 
 
 # collapse "Omnivore", "Herbivore", "Detritivore", "Carnivore" into "Consumer"
-	consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
-	meta$trophic[meta$trophic %in% consumers] <- "Consumer"
+consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
+meta$trophic[meta$trophic %in% consumers] <- "Consumer"
 
 
+# function to make tables of ASV richness by sample for a given habitat-trophic level combo
 make_sample_tables <- function(tro, hab, metadata, asv_table) {
     
     sub_met = metadata[which(metadata$habitat==hab & metadata$trophic==tro),][["sequencing_id"]]
@@ -68,39 +69,14 @@ make_sample_tables <- function(tro, hab, metadata, asv_table) {
 }
 
 
-test_str_env <- make_sample_tables(hab = "Riverine",
-                                   tro = "Environmental",
-                                   metadata = meta,
-                                   asv_table = abun)
-
-test_mar <- make_sample_tables(hab = "Marine",
-                               tro = "Unknown",
-                               metadata = meta,
-                               asv_table = abun)
-
-
-
 guilds = c("PrimaryProducer", "Environmental", "Consumer")
 
 habitats = c("Terrestrial", "Riverine", "Marine")
 
 
-test = lapply(guilds,
-              make_sample_tables,
-              hab = "Terrestrial",
-              metadata = meta,
-              asv_table = abun)
-
-for (i in 1:length(test)) {
-  names(test)[i] <- paste("Terrestrial", guilds[i], sep="_")
-}
-
-
-
-
-
 big_list = list()
 
+# makes a list of lists (3 habitat lists, 3 guild tables within each list)
 for (a_hab in habitats) {
   
   big_list[[a_hab]] = lapply(guilds,
@@ -111,6 +87,7 @@ for (a_hab in habitats) {
   
 }
 
+# name lists by hab-troph combo
 for(a_hab in habitats) {
   
   for (i in 1:length(big_list)) {
@@ -120,12 +97,12 @@ for(a_hab in habitats) {
   
 }
 
-
-
+# collapse into 1 list of 9 tables
 bigger_list <- unlist(big_list, recursive = FALSE)
 
+# there aren't any consumers in the Marine data, but the Unknown data appear to be consumers
+# replace the empty table under marine consumer with a table for marine unknown
 bigger_list[["Marine.Marine_Consumer"]] <- make_sample_tables("Unknown", "Marine", meta, abun)
-
 
 big_df <- do.call("rbind", bigger_list)
 
@@ -165,17 +142,6 @@ p <- ggplot(big_df, aes(x = habitat, y = richness, fill = trophic)) +
 
 options(bitmapType='cairo')
 ggsave("../outputs/richness_violins.png", width = 11, height = 7)
-
-
-# p <- p + stat_summary(fun.data = medquart,  fun.args = list(mult = 1), 
-#              geom = "pointrange", color = "black", position = position_dodge(0.6))
-# 
-# p <- p + stat_summary(fun.data=medquart, geom="errorbar", width=0.15, color="white")
-# p <- p + stat_summary(fun.data=medquart, geom="point", color="white")
-
-
-
-
 
 
 ```
