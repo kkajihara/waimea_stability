@@ -1,0 +1,217 @@
+---
+title: "4_richness_violin"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+
+```
+
+```{r}
+
+#data import
+abun <- readRDS("../intermediates/culled_asv_table.rds")
+meta <- data.frame(readRDS("../intermediates/culled_metadata.rds"))
+
+```
+
+```{r}
+
+# want to write a function to create data frames with sample id, ASV richness, habitat, and guild
+
+# steps:
+# for a given habitat and trophic combination (inputs). ASV table is also an input, and metadata
+# get sample ids from metadata table
+# subset ASV table by these sample ids and remove empty samples/ASVs
+# for every sample, take the sum of every cell > 0 (richness)
+# transpose, make data frame
+# make habitat and guild columns, repeat the name down the whole way
+
+# lapply over habitat? and guild? is there a for loop for guild in the function that we do a lapply over habitat for?
+
+# hab = "Riverine"
+# tro = "Environmental"
+
+
+# collapse "Omnivore", "Herbivore", "Detritivore", "Carnivore" into "Consumer"
+	consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
+	meta$trophic[meta$trophic %in% consumers] <- "Consumer"
+
+
+make_sample_tables <- function(tro, hab, metadata, asv_table) {
+    
+    sub_met = metadata[which(metadata$habitat==hab & metadata$trophic==tro),][["sequencing_id"]]
+    
+    asvs <- asv_table[,names(asv_table) %in% sub_met]
+      
+    # remove empty ASVs
+    asvs <- asvs[rowSums(asvs)>0,]
+    
+    rich = data.frame(lapply(asvs, function(x) sum(x>0)))
+    
+    b = data.frame("sequencing_id" = colnames(asvs),
+                   "richness" = t(rich),
+                   "habitat" = rep(hab, length(rich)),
+                   "trophic" = rep(tro, length(rich)))
+    
+    rownames(b) = NULL
+    
+    return(b)
+
+  
+}
+
+
+test_str_env <- make_sample_tables(hab = "Riverine",
+                                   tro = "Environmental",
+                                   metadata = meta,
+                                   asv_table = abun)
+
+test_mar <- make_sample_tables(hab = "Marine",
+                               tro = "Unknown",
+                               metadata = meta,
+                               asv_table = abun)
+
+
+
+guilds = c("PrimaryProducer", "Environmental", "Consumer")
+
+habitats = c("Terrestrial", "Riverine", "Marine")
+
+
+test = lapply(guilds,
+              make_sample_tables,
+              hab = "Terrestrial",
+              metadata = meta,
+              asv_table = abun)
+
+for (i in 1:length(test)) {
+  names(test)[i] <- paste("Terrestrial", guilds[i], sep="_")
+}
+
+
+
+
+
+big_list = list()
+
+for (a_hab in habitats) {
+  
+  big_list[[a_hab]] = lapply(guilds,
+                      make_sample_tables,
+                      hab = a_hab,
+                      metadata = meta,
+                      asv_table = abun)
+  
+}
+
+for(a_hab in habitats) {
+  
+  for (i in 1:length(big_list)) {
+    names(big_list[[a_hab]])[i] <- paste(a_hab, guilds[i], sep="_")
+  }
+
+  
+}
+
+
+
+bigger_list <- unlist(big_list, recursive = FALSE)
+
+bigger_list[["Marine.Marine_Consumer"]] <- make_sample_tables("Unknown", "Marine", meta, abun)
+
+
+big_df <- do.call("rbind", bigger_list)
+
+# rename unknown marine to consumer
+big_df$trophic[big_df$trophic=="Unknown"] <- "Consumer"
+
+
+
+```
+
+```{r}
+
+# plotting! or attempting to
+
+p <- ggplot(big_df, aes(x = habitat, y = richness, fill = trophic)) +
+  geom_violin(aes(color = trophic), position = position_dodge(0.6), width = 1.5) +
+  geom_point(pch = 19, position = position_jitterdodge(dodge.width=0.6, jitter.width=0.20), size=0.3, alpha = 0.4, show.legend = FALSE) +
+  stat_summary(fun.min = function(z) { quantile(z,0.25) },
+               fun.max = function(z) { quantile(z,0.75) },
+               fun = median,
+               position = position_dodge(0.6),
+               color = "white", show.legend = FALSE) +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        panel.background=element_blank(), 
+        axis.title.x = element_text(size=14, margin = margin(15,0,0,0)),
+        axis.title.y = element_text(size=14, margin = margin(0,10,0,0)),
+        axis.line = element_line(colour="black"),
+        axis.text.x = element_text(size=12, colour="black"),
+        axis.text.y = element_text(size=12, colour="black"),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=12, colour="black")) +
+  labs(x = "Habitat", y = "ASV richness", fill = "Trophic levels") +
+  guides(color = "none") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,2500))
+
+options(bitmapType='cairo')
+ggsave("../outputs/richness_violins.png", width = 11, height = 7)
+
+
+# p <- p + stat_summary(fun.data = medquart,  fun.args = list(mult = 1), 
+#              geom = "pointrange", color = "black", position = position_dodge(0.6))
+# 
+# p <- p + stat_summary(fun.data=medquart, geom="errorbar", width=0.15, color="white")
+# p <- p + stat_summary(fun.data=medquart, geom="point", color="white")
+
+
+
+
+
+
+```
+
+
+
+```{r}
+# Jack's function to get richness - it looks like this returns the same as what I did, just a lot faster
+	library(iNEXT)
+	library(parallel)
+	get_rich <- function(x){
+		x <- x[x > 0]
+		a <- ChaoRichness(x, datatype="abundance")
+		return(c(observed=a$Observed, estimator=a$Estimator))
+	}
+	otutable_list <- as.data.frame((abun))
+
+	richs <- mclapply(X=otutable_list, FUN=get_rich, mc.cores=20)
+	richs <- do.call("rbind", richs)
+
+
+# function to get median and lower+upper quartiles for data
+	medquart <- function(x){
+		qs <- quantile(x)
+		return(data.frame(
+			y=median(x), 
+			ymin=qs[2],
+			ymax=qs[4]
+		))
+	}
+	
+	
+```
+
+
+
+
+
+
