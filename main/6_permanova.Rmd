@@ -1,0 +1,52 @@
+---
+title: "6_permanova"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(vegan)
+
+```
+
+```{r}
+
+# data import
+nmds_dfs <- readRDS("../intermediates/nmds_data_frames_by_habitat.rds")
+
+nmds_mats <- readRDS("../intermediates/nmds_matrices_by_habitat.rds")
+
+nmds_scores <- readRDS("../intermediates/nmds_scores_by_habitat.rds")
+
+```
+
+
+```{r}
+
+terr_perm <- adonis(nmds_mats[["Terrestrial"]] ~ nmds_scores[["Terrestrial"]]$trophic, permutations = 9999, method = "bray")
+
+stream_perm <- adonis(nmds_mats[["Riverine"]] ~ nmds_scores[["Riverine"]]$trophic, permutations = 9999, method = "bray")
+
+marine_perm <- adonis(nmds_mats[["Marine"]] ~ nmds_scores[["Marine"]]$trophic, permutations = 9999, method = "bray")
+
+
+```
+
+```{r}
+saveRDS(terr_perm, "../outputs/permanova_terrestrial_results.rds")
+saveRDS(stream_perm, "../outputs/permanova_stream_results.rds")
+saveRDS(marine_perm, "../outputs/permanova_marine_results.rds")
+
+```
+
+
+
+
+
+
+

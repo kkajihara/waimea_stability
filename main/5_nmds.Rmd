@@ -1,0 +1,194 @@
+---
+title: "5_nmds"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(vegan)
+library(tibble)
+
+```
+
+```{r}
+
+abun <- readRDS("../intermediates/culled_asv_table.rds")
+meta <- readRDS("../intermediates/culled_metadata.rds")
+
+meta <- data.frame(meta)
+
+```
+
+```{r}
+
+# want samples as rows, ASVs as columns
+all_samp_nmds_data <- as.data.frame(t(abun))
+
+hist(rowSums(all_samp_nmds_data))
+
+# collapse "Omnivore", "Herbivore", "Detritivore", "Carnivore" into "Consumer"
+consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
+meta$trophic[meta$trophic %in% consumers] <- "Consumer"
+
+# change marine unknown to consumer
+meta$trophic[meta$habitat=="Marine" & meta$trophic=="Unknown"] <- "Consumer"
+
+```
+
+```{r}
+
+# dim(all_samp_nmds_data)
+# 
+# # reduce dataset
+# hist(rowSums(all_samp_nmds_data), breaks = 50)
+# 
+# check <- all_samp_nmds_data[rowSums(all_samp_nmds_data) >=1000,]
+# 
+# check <- check[,colSums(check)>0] # removes 73 ASVs: 51984 ASVs
+# 
+# dim(check)
+# 
+# # removing samples with <= 1000 reads leaves us with 92% of samples
+# 1484/1614
+# 
+# rar = as.matrix(all_samp_nmds_data)
+# 
+# # for now, rarefy down to 1000 reads per sample
+# rarefied_nmds_data <- rrarefy(all_samp_nmds_data[rowSums(all_samp_nmds_data)>=1000,], sample = 1000)
+# 
+# rarefied_nmds_data <- rarefied_nmds_data[,colSums(rarefied_nmds_data)>0]
+# 
+# dim(rarefied_nmds_data) # 1484 samples, 25101 ASVs - that's like half of ASVs
+# 
+# rarefied_nmds_data <- as.data.frame(rarefied_nmds_data)
+
+
+```
+
+
+
+```{r}
+
+habitats <- c("Terrestrial", "Riverine", "Marine")
+guilds <- c("PrimaryProducer", "Consumer", "Environmental")
+
+nmds_dfs <- list()
+
+nmds_mats <- list()
+
+
+for (a_hab in habitats) {
+  
+  samps <- meta[which(meta$habitat==a_hab & meta$trophic %in% guilds),][["sequencing_id"]]
+  
+  sub_df <- all_samp_nmds_data[rownames(all_samp_nmds_data) %in% samps, ]
+  
+  # remove empty ASVs
+  sub_df <- sub_df[,colSums(sub_df)>0]
+  
+  sub_df <- sub_df %>% rownames_to_column("sequencing_id")
+  
+  sub_df$guild <- meta$trophic[which(meta$sequencing_id %in% sub_df$sequencing_id)]
+  
+  sub_df <- relocate(sub_df, sequencing_id, guild)
+  
+  nmds_dfs[[a_hab]] <- sub_df
+  
+  
+  sub_mat <- sub_df[,3:ncol(sub_df)]
+  
+  sub_mat <- as.matrix(sub_mat)
+  
+  nmds_mats[[a_hab]] <- sub_mat
+  
+}
+
+saveRDS(nmds_dfs, "../intermediates/nmds_data_frames_by_habitat.rds")
+saveRDS(nmds_mats, "../intermediates/nmds_matrices_by_habitat.rds")
+
+
+```
+
+
+
+```{r}
+
+nmds_results <- list()
+
+nmds_scores <- list()
+
+for (a_hab in habitats) {
+  set.seed(2022)
+  
+  nmds <- metaMDS(nmds_mats[[a_hab]], distance = "bray", weakties=FALSE)
+  
+  nmds_results[[a_hab]] <- nmds
+  
+  scores <- as.data.frame(scores(nmds))
+  
+  scores$trophic <- nmds_dfs[[a_hab]]$guild
+  
+  nmds_scores[[a_hab]] <- scores
+
+}
+
+saveRDS(nmds_results, "../intermediates/nmds_results_by_habitat.rds")
+saveRDS(nmds_scores, "../intermediates/nmds_scores_by_habitat.rds")
+
+```
+
+```{r}
+
+make_nmds_plot <- function (hab, scores_list, results_list) {
+  
+  p <- ggplot(scores_list[[hab]], aes(x = NMDS1, y = NMDS2)) +
+              geom_point(data = scores_list[[hab]], size = 4, aes(colour = trophic))+
+              stat_ellipse(aes(x = NMDS1, y = NMDS2, group = trophic, color=trophic), level = 0.50, size=1) +
+              theme(axis.text.y = element_text(colour = "black", size = 20),
+              axis.text.x = element_text(colour = "black", size = 20),
+              legend.text = element_text(size = 20, colour ="black"),
+              legend.position = "right",
+              axis.title.y = element_text(size = 20, vjust=3),
+              axis.title.x = element_text(size = 20, vjust=-2),
+              legend.title = element_text(size = 20, colour = "black"),
+              plot.title = element_text(size = 22, face = "bold"),
+              plot.margin = unit(c(1,1,1,1), "cm"),
+              panel.background = element_blank(),
+              panel.border = element_rect(colour = "black", fill = NA, size = 1.2),
+              legend.key=element_blank()) +
+              annotate("text", 
+                       label=paste0("stress=", round(results_list[[hab]]$stress, 3)), 
+                       x=max(scores_list[[hab]]$NMDS1)-0.05, 
+                       y=-0.35, colour="black", size = 7) +
+              labs(x = "NMDS1", y = "NMDS2", colour = "Trophic level", title = hab) +
+              scale_color_brewer(palette = "Set2")
+  
+  return(p)
+  
+}
+
+plot_list <- lapply(habitats,
+                    make_nmds_plot,
+                    scores_list <- nmds_scores,
+                    results_list <- nmds_results)
+
+ggsave(plot = plot_list[[1]], filename = "../figures/nmds_terrestrial.png", width = 14, height = 9)
+ggsave(plot = plot_list[[2]], filename = "../figures/nmds_stream.png", width = 14, height = 9)
+ggsave(plot = plot_list[[3]], filename = "../figures/nmds_marine.png", width = 14, height = 9)
+
+
+```
+
+
+
+
+
+
+
+
+
