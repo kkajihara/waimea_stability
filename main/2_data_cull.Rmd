@@ -26,11 +26,11 @@ library(phyloseq)
 # 
 # its_meta <- readRDS("../intermediates/culled_metadata.rds")
 
-ps_noncontam <- readRDS("../intermediates/decontaminated_phyloseq_object.rds")
+ps_noncontam <- readRDS("../intermediates/decontaminated_phyloseq_object_no_moss_no_lichen.rds")
 
 abun <- as.data.frame(otu_table(ps_noncontam))
 tax <- as.data.frame(tax_table(ps_noncontam))
-its_meta <- as.data.frame(sample_data(ps_noncontam))
+its_meta <- data.frame(sample_data(ps_noncontam))
 
 
 ```
@@ -252,9 +252,9 @@ The 100 read line (blue) appears to be around a somewhat "break" in the data?
 
 # so, want to cull the abundance file (and then reduce the metadata and tax files by samples or ASVs that are no longer there)
 
-culled_abun <- abun[,colSums(abun)>160] # 60 samples removed, 1614 remain
+culled_abun <- abun[,colSums(abun)>160] # 105 samples removed, 1572 remain
 # remove ASVs with only one read
-culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 13 ASVs removed, 52057 remain
+culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 13 ASVs removed, 50116 remain
 
 saveRDS(culled_abun, "../intermediates/culled_asv_table.rds")
 

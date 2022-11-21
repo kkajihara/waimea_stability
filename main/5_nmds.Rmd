@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(vegan)
 library(tibble)
+library(ggplot2)
 
 ```
 
@@ -41,6 +42,7 @@ meta$trophic[meta$habitat=="Marine" & meta$trophic=="Unknown"] <- "Consumer"
 ```
 
 ```{r}
+### this code was for rarefying to create a reduced version of the dataset that would hopefully play better with metaMDS and other distance-matrix based analyses, but the full dataset works for now
 
 # dim(all_samp_nmds_data)
 # 
@@ -185,9 +187,81 @@ ggsave(plot = plot_list[[3]], filename = "../figures/nmds_marine.png", width = 1
 ```
 
 
+### Habitats Pooled
+
+```{r}
+
+samps <- meta[which(meta$habitat %in% habitats & meta$trophic %in% guilds),][["sequencing_id"]]
+  
+pool_df <- all_samp_nmds_data[rownames(all_samp_nmds_data) %in% samps, ]
+  
+# remove empty ASVs
+pool_df <- pool_df[,colSums(pool_df)>0]
+  
+pool_df <- pool_df %>% rownames_to_column("sequencing_id")
+  
+pool_df$guild <- meta$trophic[which(meta$sequencing_id %in% pool_df$sequencing_id)]
+pool_df$habitat <- meta$habitat[which(meta$sequencing_id %in% pool_df$sequencing_id)]
+  
+pool_df <- relocate(pool_df, sequencing_id, guild, habitat)
+  
+  
+pool_mat <- pool_df[,4:ncol(pool_df)]
+  
+pool_mat <- as.matrix(pool_mat)
+  
+  
+# run it!
+set.seed(2022)
+  
+pool_nmds <- metaMDS(pool_mat, distance = "bray", weakties=FALSE)
+  
+pool_nmds_results <- pool_nmds
+  
+pool_scores <- as.data.frame(scores(pool_nmds))
+  
+pool_scores$trophic <- pool_df$guild
+pool_scores$habitat <- pool_df$habitat
 
 
 
+# saving stuff out
+saveRDS(pool_df, "../intermediates/habitat_pooled_nmds_df.rds")
+saveRDS(pool_mat, "../intermediates/habitat_pooled_nmds_matrix.rds")
+saveRDS(pool_scores, "../intermediates/habitat_pooled_nmds_scores.rds")
+
+
+
+```
+
+
+```{r}
+
+# create nmds plot. Get stress value from 'nmds'
+nmds_plot <- ggplot(pool_scores, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(data = pool_scores, size = 4, aes(shape = habitat, colour = trophic)) + 
+    stat_ellipse(aes(x = NMDS1, y = NMDS2, group = trophic, color=trophic), level = 0.95, size=1) +
+    theme(axis.text.y = element_text(colour = "black", size = 20), 
+    axis.text.x = element_text(colour = "black", size = 20), 
+    legend.text = element_text(size = 20, colour ="black"), 
+    legend.position = "right", 
+    axis.title.y = element_text(size = 20, vjust=3),
+    axis.title.x = element_text(size = 20, vjust=-2),
+    plot.title = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 20, colour = "black"),
+    plot.margin = unit(c(1,1,1,1), "cm"),
+    panel.background = element_blank(), 
+    panel.border = element_rect(colour = "black", fill = NA, size = 1.2),
+    legend.key=element_blank()) + 
+    annotate("text", label="stress=0.274", x=0.15, y=-0.19, colour="black", size = 7) +
+    labs(x = "NMDS1", y = "NMDS2", shape = "Habitat", colour = "Trophic level", title = "All Habitats Pooled") +
+    theme(legend.text=element_text(size = 20, colour = "black")) +
+    scale_color_brewer(palette = "Set2") 
+
+
+ggsave("../figures/nmds_all_habitats.png", width = 14, height = 9)
+
+```
 
 
 

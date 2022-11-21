@@ -1,0 +1,175 @@
+---
+title: "controls and decontamination"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(decontam)
+
+```
+
+```{r, echo=FALSE}
+
+# read in abundance table
+# sample IDS are cols, ASVs are rows
+abun <- readRDS("../intermediates/asv_table.rds")
+tax <- readRDS("../intermediates/taxonomy_table.rds")
+
+meta <- read.csv("../metadata/all_waimea_hiseq_sample_metadata.csv")
+
+```
+
+
+```{r}
+
+# subset metadata so only ITS
+its_meta <- meta[grep("ITS", meta$locus, ignore.case = T),]
+
+# get controls
+neg_con_dat <- its_meta[grep("negativecontrol", its_meta$sample_type, ignore.case = T),]
+
+pcr_neg_con_dat <- its_meta[grep("pcrneg", its_meta$collection_label, ignore.case = T),]
+
+pos_con_dat <- its_meta[its_meta$sample_type=="Control",]
+pos_con_dat <- pos_con_dat[grep("neg", pos_con_dat$collection_label, ignore.case = T, invert = T),]
+
+```
+
+
+## Make phyloseq object (or attempt to)
+
+```{r}
+
+library(phyloseq)
+
+
+phy_tax <- tax
+
+
+# there are two entries for asv_1
+# but actually the "size" col doesn't matter for phyloseq purposes
+n_occur <- data.frame(table(tax$OTU))
+
+# phy_tax <- phy_tax %>% select(-Size)
+# remove first row (asv_1, duplicate)
+phy_tax <- phy_tax[-1,]
+phy_tax <- column_to_rownames(phy_tax, "OTU")
+
+phy_tax <- phy_tax %>% select(-Size)
+phy_tax <- phy_tax[order(rownames(phy_tax)),]
+
+# NEED TO DO THIS SO PHYLOSEQ() WORKS
+phy_tax <- as.matrix(phy_tax)
+
+# filter metadata to only include samples in abundance table
+phy_met <- meta[meta$sequencing_id %in% names(abun),]
+rownames(phy_met) <- phy_met$sequencing_id
+
+
+# physeq object
+asv = otu_table(abun, taxa_are_rows = TRUE)
+taxo = tax_table(phy_tax)
+met <- sample_data(phy_met)
+
+its_physeq <- phyloseq(asv, taxo, met)
+
+
+
+```
+
+```{r}
+
+# decontam
+
+# summarize negative control data as logical variable for decontam function
+sample_data(its_physeq)$is.neg <- sample_data(its_physeq)$sample_type == "NegativeControl"
+its_decontamed <- isContaminant(its_physeq, method = "prevalence", neg = "is.neg")
+table(its_decontamed$contaminant) ## 23 ASVs identified as contaminants
+
+# more stringent criteria where all sequences more prevalent in negs than pos will be contaminants
+its_decontam_prev05 <- isContaminant(its_physeq, method = "prevalence", neg = "is.neg", threshold = 0.5)
+table(its_decontam_prev05$contaminant) ## 42 ASVs identified as contaminants
+
+
+
+ps.pa <- transform_sample_counts(its_physeq, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+ps.pa.pos <- prune_samples(!sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=its_decontam_prev05$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+# remove contaminants from ps
+ps_noncontam <- prune_taxa(!its_decontam_prev05$contaminant, its_physeq) # 42 ASVs removed, 52070 remain
+ps_noncontam <- subset_samples(ps_noncontam, sample_sums(ps_noncontam) > 0) # 3 samples removed, 1674 remain
+
+saveRDS(ps_noncontam, "../intermediates/decontaminated_phyloseq_object.rds")
+
+# ALSO, we want to remove moss and lichen because these may not reflect primary producers too well
+ps_noncon_no_mosslich <- prune_samples(!(sample_data(ps_noncontam)$sample_type %in% c("MossThallus", "LichenThallus")),
+                           ps_noncontam) # 1632 samples remain
+ps_noncon_no_mosslich <- subset_taxa(ps_noncon_no_mosslich, taxa_sums(ps_noncon_no_mosslich) > 0) # 50129 ASVs remain
+
+saveRDS(ps_noncon_no_mosslich, "../intermediates/decontaminated_phyloseeq_object_no_moss_no_lichen.rds")
+
+```
+
+
+
+```{r}
+# testing stuff
+neg.ps <- prune_samples(sample_data(its_physeq)$sample_type == "NegativeControl", its_physeq)
+
+c = as.data.frame(taxa_sums(neg.ps))
+c$filler = rep(0)
+
+contams = df.pa$contaminant==TRUE
+
+d = c[c$`taxa_sums(neg.ps)`>0,]
+neg_readsums <- rownames(d)
+
+contams %in% neg_readsums
+neg_readsums[which(!neg_readsums %in% contams)]
+
+check = neg_readsums[which(!neg_readsums %in% contams)]
+e = d[rownames(d) %in% check,]
+
+asvs_to_check = rownames(e)
+
+check_abun = abun[rownames(abun) %in% asvs_to_check,]
+check_abun = check_abun[,colSums(check_abun) > 0]
+
+
+asv_3 = check_abun[rownames(check_abun)=="asv_3",]
+asv_3 = asv_3[,colSums(asv_3) > 0]
+asv_3 = as.data.frame(t(asv_3))
+
+
+# yeah, I think I trust that the contaminants pulled out by decontam are true,
+# and the ones that are in negative controls but not considered contaminants are also true.
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

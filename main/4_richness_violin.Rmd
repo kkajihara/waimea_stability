@@ -109,7 +109,7 @@ big_df <- do.call("rbind", bigger_list)
 # rename unknown marine to consumer
 big_df$trophic[big_df$trophic=="Unknown"] <- "Consumer"
 
-
+saveRDS(big_df, "../intermediates/big_richness_data_frame.rds")
 
 ```
 
@@ -141,40 +141,128 @@ p <- ggplot(big_df, aes(x = habitat, y = richness, fill = trophic)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0,2500))
 
 options(bitmapType='cairo')
-ggsave("../outputs/richness_violins.png", width = 11, height = 7)
+ggsave("../figures/richness_violins_nomosslichen.png", width = 11, height = 7)
 
+
+# want to make a subplot with marine only so that the y axis isn't so squished
+mar_df <- big_df[which(big_df$habitat=="Marine"),]
+
+mar_p <- ggplot(mar_df, aes(x = habitat, y = richness, fill = trophic)) +
+  geom_violin(aes(color = trophic), position = position_dodge(0.8), width = 1.5) +
+  geom_point(pch = 19, position = position_jitterdodge(dodge.width=0.8, jitter.width=0.20), size=0.3, alpha = 0.4, show.legend = FALSE) +
+  stat_summary(fun.min = function(z) { quantile(z,0.25) },
+               fun.max = function(z) { quantile(z,0.75) },
+               fun = median,
+               position = position_dodge(0.8),
+               color = "white", show.legend = FALSE) +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        panel.background=element_blank(), 
+        axis.title.x = element_text(size=14, margin = margin(15,0,0,0)),
+        axis.title.y = element_text(size=14, margin = margin(0,10,0,0)),
+        axis.line = element_line(colour="black"),
+        axis.text.x = element_text(size=12, colour="black"),
+        axis.text.y = element_text(size=12, colour="black"),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=12, colour="black")) +
+  labs(x = "Habitat", y = "ASV richness", fill = "Trophic levels") +
+  guides(color = "none") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,1000))
+
+ggsave("../figures/richness_violins_marine_only.png", width = 11, height = 7)
+
+
+mar_squish <- ggplot(mar_df, aes(x = habitat, y = richness, fill = trophic)) +
+  geom_violin(aes(color = trophic), position = position_dodge(0.8), width = 1.5) +
+  geom_point(pch = 19, position = position_jitterdodge(dodge.width=0.8, jitter.width=0.20), size=0.3, alpha = 0.4, show.legend = FALSE) +
+  stat_summary(fun.min = function(z) { quantile(z,0.25) },
+               fun.max = function(z) { quantile(z,0.75) },
+               fun = median,
+               position = position_dodge(0.8),
+               color = "white", show.legend = FALSE) +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        panel.background=element_blank(), 
+        axis.title.x = element_text(size=14, margin = margin(15,0,0,0)),
+        axis.title.y = element_text(size=14, margin = margin(0,10,0,0)),
+        axis.line = element_line(colour="black"),
+        axis.text.x = element_text(size=12, colour="black"),
+        axis.text.y = element_text(size=12, colour="black"),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=12, colour="black")) +
+  labs(x = "Habitat", y = "ASV richness", fill = "Trophic levels") +
+  guides(color = "none") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,200))
+
+ggsave("../figures/richness_violins_marine_squish.png", width = 11, height = 7)
 
 ```
 
 
+Who are the outliers?
 
 ```{r}
-# Jack's function to get richness - it looks like this returns the same as what I did, just a lot faster
-	library(iNEXT)
-	library(parallel)
-	get_rich <- function(x){
-		x <- x[x > 0]
-		a <- ChaoRichness(x, datatype="abundance")
-		return(c(observed=a$Observed, estimator=a$Estimator))
-	}
-	otutable_list <- as.data.frame((abun))
 
-	richs <- mclapply(X=otutable_list, FUN=get_rich, mc.cores=20)
-	richs <- do.call("rbind", richs)
+out <- big_df[which(big_df$richness>1800),]
+#out <- out[order(-out$richness),]
+
+out_meta <- meta[which(meta$sequencing_id %in% out$sequencing_id),]
+
+out$sample_type <- out_meta$sample_type
+out$site <- out_meta$site_name
+
+rownames(out) <- NULL
+
+saveRDS(out, "../intermediates/potential_outlier_identities.rds")
 
 
-# function to get median and lower+upper quartiles for data
-	medquart <- function(x){
-		qs <- quantile(x)
-		return(data.frame(
-			y=median(x), 
-			ymin=qs[2],
-			ymax=qs[4]
-		))
-	}
-	
-	
+
+# marine outlier
+
+mar_out <- mar_df[which(mar_df$richness>750),]
+#out <- out[order(-out$richness),]
+
+mar_out_meta <- meta[which(meta$sequencing_id %in% mar_out$sequencing_id),]
+
+mar_out$sample_type <- mar_out_meta$sample_type
+mar_out$site <- mar_out_meta$site_name
+
+rownames(mar_out) <- NULL
+
+saveRDS(mar_out, "../intermediates/potential_marine_outlier.rds")
+
 ```
+
+
+### ANOVA
+
+```{r}
+
+# asking if the means in richness differ between guilds within a habitat
+mar_df # already have from before
+
+ter_df <- big_df[which(big_df$habitat=="Terrestrial"),]
+
+str_df <- big_df[which(big_df$habitat=="Riverine"),]
+
+
+# marine
+mar_rich_aov <- aov(formula = richness ~ trophic, data = mar_df)
+mar_tuk <- TukeyHSD(mar_rich_aov)
+
+
+# terrestrial
+ter_rich_aov <- aov(formula = richness ~ trophic, data = ter_df)
+ter_tuk <- TukeyHSD(ter_rich_aov)
+
+# stream
+str_rich_aov <- aov(formula = richness ~ trophic, data = str_df)
+str_tuk <- TukeyHSD(str_rich_aov)
+
+```
+
 
 
 
