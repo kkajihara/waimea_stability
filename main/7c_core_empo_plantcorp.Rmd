@@ -1,0 +1,196 @@
+---
+title: "7_core"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(reshape2)
+
+```
+
+```{r}
+#data import
+abun <- readRDS("../intermediates/culled_asv_table.rds") # samples are columns, ASVs are rows
+meta <- readRDS("../intermediates/culled_metadata_edited_trophic.rds")
+
+meta <- data.frame(meta)
+
+# collapse "Omnivore", "Herbivore", "Detritivore", "Carnivore" into "Consumer"
+# consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
+# meta$trophic[meta$trophic %in% consumers] <- "Consumer"
+# # convert marine "Unknown" trophic to consumer
+# meta$trophic[meta$habitat=="Marine" & meta$trophic=="Unknown"] <- "Consumer"
+
+```
+
+
+### Data Wrangling
+
+```{r}
+
+abun2 <- rownames_to_column(abun, "ASV")
+# check sample numbers - yes there are no empty samples
+# melt2 <- melt(abun2)
+# melt2$habitat <- meta$habitat[match(melt2$variable, meta$sequencing_id)]
+# melt2$trophic <- meta$trophic[match(melt2$variable, meta$sequencing_id)]
+# 
+# mar_melt2 <- melt2[which(melt2$habitat=="Marine"),]
+# str_melt2 <- melt2[which(melt2$habitat=="Riverine"),]
+# ter_melt2 <- melt2[which(melt2$habitat=="Terrestrial"),]
+
+melt_abun <- melt(abun2)
+melt_abun <- melt_abun[melt_abun$value>0,]
+colnames(melt_abun)[2] <- "sequencing_id"
+
+# add habitat and trophic columns (+ empo3) matching by sequencing ID
+melt_abun$habitat <- meta$habitat[match(melt_abun$sequencing_id, meta$sequencing_id)]
+melt_abun$trophic <- meta$trophic[match(melt_abun$sequencing_id, meta$sequencing_id)]
+melt_abun$empo3 <- meta$empo_3[match(melt_abun$sequencing_id, meta$sequencing_id)]
+melt_abun$sample_type <- meta$sample_type[match(melt_abun$sequencing_id, meta$sequencing_id)]
+
+#trophs = c("PrimaryProducer", "Environmental", "Consumer")
+habitats = c("Terrestrial", "Riverine", "Marine")
+empo_cats <- unique(meta$empo_3)
+
+# just plantal corpus for now
+plant_corp_table <- melt_abun[which(melt_abun$empo3=="Plant corpus" & melt_abun$habitat %in% habitats),]
+
+
+plant_corp_list <- list()
+
+for (a_hab in habitats) {
+  sub_df <- plant_corp_table[which(plant_corp_table$habitat==a_hab),]
+  plant_corp_list[[a_hab]] <- sub_df
+}
+
+
+
+num_samps <- sapply(plant_corp_list, function(x) length(unique(x$sequencing_id)))
+
+
+prevs <- list()
+
+for (i in 1:length(plant_corp_list)) {
+  df <- as.data.frame(plant_corp_list[[i]])
+  df <- df %>% group_by(ASV) %>% summarise(prev = n_distinct(sequencing_id)/num_samps[[i]])
+  df <- arrange(df, desc(prev))
+  
+  prevs[[i]] <- df
+}
+
+
+names(prevs) <- habitats
+
+```
+
+### Plotting
+
+```{r}
+prev_plot <- function(df) {
+  p <- ggplot(data = df, aes(x=ASV, y=prev)) +
+    geom_point(alpha = 0.3) +
+    theme(axis.text.x = element_blank(),
+          axis.line = element_line(colour="black")) +
+    geom_hline(yintercept = 0.8, color="blue") +
+    geom_hline(yintercept = 0.6, color="red") +
+    scale_y_continuous(expand = c(0, 0), limits = c(0,1.0), breaks = seq(0,1,0.2))
+  
+  return(p)
+}
+
+# terrestrial 
+plant_corp_plots <- lapply(prevs, prev_plot)
+
+for (i in 1:length(habitats)) {
+  pl <- plant_corp_plots[[i]] + labs(title = habitats[i])
+  plant_corp_plots[[i]] <- pl
+}
+
+library(ggpubr)
+pcp <- ggarrange(plant_corp_plots[[1]], plant_corp_plots[[2]], plant_corp_plots[[3]], nrow=1)
+
+pcp <- annotate_figure(pcp, top = text_grob("Plant Corpus", color = "black", face = "bold", size = 14))
+
+ggsave("../figures/plant_corpus_prevalence.png", width=17, height=5)
+
+
+
+
+
+# library(ggpubr)
+# 
+# a <- ggarrange(ter_plots[[1]], ter_plots[[2]], ter_plots[[3]], nrow = 1, 
+#                vjust = 0.1,
+#                #labels = c(trophs[[3]], trophs[[2]], trophs[[3]]),
+#                font.label=list(color="black", face = "plain", size=14))
+# 
+# b <- annotate_figure(a, top = text_grob("Terrestrial", 
+#                color = "black", face = "bold", size = 14))
+# 
+# ggsave("../figures/terrestrial_prevalence.png", width = 17, height = 5)
+# 
+# 
+# # riverine 
+# str_plots <- lapply(s, prev_plot)
+# 
+# for (i in 1:length(trophs)) {
+#   sp <- str_plots[[i]] + labs(title = trophs[i])
+#   str_plots[[i]] <- sp
+# }
+# 
+# c <- ggarrange(str_plots[[1]], str_plots[[2]], str_plots[[3]], nrow = 1, 
+#                vjust = 0.1,
+#                #labels = c(trophs[[3]], trophs[[2]], trophs[[3]]),
+#                font.label=list(color="black", face = "plain", size=14))
+# 
+# d <- annotate_figure(c, top = text_grob("Riverine", 
+#                color = "black", face = "bold", size = 14))
+# 
+# ggsave("../figures/riverine_prevalence.png", width = 17, height = 5)
+# 
+# 
+# # marine 
+# mar_plots <- lapply(m, prev_plot)
+# 
+# for (i in 1:length(trophs)) {
+#   mp <- mar_plots[[i]] + labs(title = trophs[i])
+#   mar_plots[[i]] <- mp
+# }
+# 
+# e <- ggarrange(mar_plots[[1]], mar_plots[[2]], mar_plots[[3]], nrow = 1, 
+#                vjust = 0.1,
+#                #labels = c(trophs[[3]], trophs[[2]], trophs[[3]]),
+#                font.label=list(color="black", face = "plain", size=14))
+# 
+# f <- annotate_figure(e, top = text_grob("Marine", 
+#                color = "black", face = "bold", size = 14))
+# 
+# ggsave("../figures/marine_prevalence.png", width = 17, height = 5)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

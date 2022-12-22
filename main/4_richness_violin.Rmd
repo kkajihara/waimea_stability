@@ -42,6 +42,10 @@ meta <- data.frame(readRDS("../intermediates/culled_metadata.rds"))
 # collapse "Omnivore", "Herbivore", "Detritivore", "Carnivore" into "Consumer"
 consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
 meta$trophic[meta$trophic %in% consumers] <- "Consumer"
+# convert marine "Unknown" trophic to consumer
+meta$trophic[meta$habitat=="Marine" & meta$trophic=="Unknown"] <- "Consumer"
+
+saveRDS(meta, "../intermediates/culled_metadata_edited_trophic.rds")
 
 
 # function to make tables of ASV richness by sample for a given habitat-trophic level combo
