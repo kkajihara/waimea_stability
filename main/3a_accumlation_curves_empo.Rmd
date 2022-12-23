@@ -1,0 +1,171 @@
+---
+title: "Accumulation Curves - EMPO"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE}
+library(iNEXT)
+library(job)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+```
+
+```{r}
+# read in data
+culled_abun <- readRDS("../intermediates/culled_asv_table.rds")
+#culled_tax <- readRDS("stuff_to_scp/culled_tax_table.rds")
+culled_meta <- readRDS("../intermediates/culled_metadata_edited_trophic.rds")
+
+culled_meta <- data.frame(culled_meta)
+```
+
+```{r}
+# goal: accumulation curves by empo3 category, per plot(?)
+# I think the plots correspond to 'site_name' - there are no distinct lat-lon combos within site
+
+# sites to remove: Lab and NA
+meta_sub <- culled_meta[which(!culled_meta$site_name %in% c("Lab", NA)),]
+
+abun_sub <- culled_abun[,which(names(culled_abun) %in% meta_sub$sequencing_id)]
+abun_sub <- abun_sub[which(rowSums(abun_sub) > 0),]
+
+```
+
+```{r}
+# want one list per plot/site, where each item in the list is a vector of nonzero ASV abundances corresponding to each EMPO3 cateogory
+# gonna need a loop or apply
+
+#sites <- unique(meta_sub$site_name)
+
+site_subset <- function(asv_table, meta_table) {
+  sites <- unique(meta_table$site_name)
+  
+  site_list <- list()
+  
+  for (a_site in sites) {
+    sub_met <- meta_table[which(meta_table$site_name==a_site),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    site_list[[a_site]] <- sub_abun
+  }
+  
+  return(site_list)
+}
+
+asvs_by_site <- site_subset(abun_sub, meta_sub)
+
+#4, 5
+
+make_emp_list <- function(site, site_list, meta_table, asv_table) {
+  
+  dat <- site_list[[site]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$sequencing_id %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- rowSums(sub_abun)
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+sites <- names(asvs_by_site)
+
+emp_asv_sums <- lapply(sites,
+                make_emp_list,
+                asvs_by_site,
+                meta_sub,
+                abun_sub)
+
+names(emp_asv_sums) <- names(asvs_by_site)
+
+```
+
+```{r}
+## inext 
+
+# job::job({
+#   site1_inext <- iNEXT(emp_asv_sums[["OutsideRocks"]], nboot = 200) 
+# })
+
+#inext_list <- lapply(emp_asv_sums, function(x) iNEXT(x, nboot=200))
+
+inext_results <- list()
+
+for (i in 1:length(emp_asv_sums)) {
+  dat <- emp_asv_sums[[i]]
+  counts <- sapply(dat, sum)
+  end <- max(counts)
+  
+  curve_calc <- iNEXT(dat, nboot = 200, endpoint = (end*2))
+  
+  inext_results[[i]] <- curve_calc
+}
+
+
+saveRDS(inext_results, "../outputs/list_of_inext_results_by_site.rds")
+
+lapply(inext_results, ggiNEXT)
+
+```
+
+```{r}
+plot_list <- list()
+
+for (i in 1:length(inext_results)) {
+  plot <- ggiNEXT(inext_results[[i]]) +
+  theme_classic() +
+  ggtitle(sites[[i]]) +
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 16,
+                                  face = "bold",
+                                  margin = margin(0,0,20,0)),
+        axis.title.x = element_text(vjust=-2),
+        axis.title.y = element_text(vjust=2)) +
+  scale_shape_manual(values = rep(19, length(emp_asv_sums[[i]]))) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme(plot.margin = margin(20,10,20,5)) +
+  #scale_y_continuous(limits=c(0,30000), breaks=seq(0,30000, by = 10000)) +
+  xlab("Number of sequences") +
+  ylab("ASV richness")
+  
+  plot_list[[i]] <- plot
+}
+
+saveRDS(plot_list, "../intermediates/emp_accum_curve_plot_list.rds")
+
+```
+
+```{r}
+
+for (i in 1:length(plot_list)) {
+  ggsave(filename = paste0("../figures/emp_accum_curves/", sites[[i]], "_accum_curve.png"), plot = plot_list[[i]], width = 8, height = 5)
+}
+
+```
+
+
+
+
+
+
+
+
+
