@@ -34,13 +34,17 @@ meta_sub <- culled_meta[which(!culled_meta$site_name %in% c("Lab", NA)),]
 abun_sub <- culled_abun[,which(names(culled_abun) %in% meta_sub$sequencing_id)]
 abun_sub <- abun_sub[which(rowSums(abun_sub) > 0),]
 
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+meta_sub$x_seq_ids <- paste0("X", meta_sub$sequencing_id)
 ```
 
 ```{r}
 # want one list per plot/site, where each item in the list is a vector of nonzero ASV abundances corresponding to each EMPO3 cateogory
 # gonna need a loop or apply
 
-#sites <- unique(meta_sub$site_name)
+# also want to subset sites with multiple habitats (stream, marine, terrestrial) by habitat type
 
 site_subset <- function(asv_table, meta_table) {
   sites <- unique(meta_table$site_name)
@@ -49,15 +53,44 @@ site_subset <- function(asv_table, meta_table) {
   
   for (a_site in sites) {
     sub_met <- meta_table[which(meta_table$site_name==a_site),]
-    sub_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
-    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
-    site_list[[a_site]] <- sub_abun
+    
+      if (length(unique(sub_met$habitat != 1))) {
+        habs <- unique(sub_met$habitat)
+        
+          for (a_hab in habs) {
+            sub_hab_met <- sub_met[which(sub_met$habitat==a_hab),]
+            
+            sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_hab_met$sequencing_id)]
+            sub_hab_abun <- data.frame(sub_hab_abun)
+            sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+            sub_hab_abun <- data.frame(sub_hab_abun)
+            
+            site_hab_name <- paste(a_site, a_hab, sep=", ")
+            
+            site_list[[site_hab_name]] <- sub_hab_abun
+            
+          }
+        
+      } else {
+        
+        sub_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+        sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+        
+        hab <- unique(sub_met$habitat)
+        hab_name <- paste(a_site, hab, sep=", ")
+        
+        site_list[[hab_name]] <- sub_abun
+        
+      }
+    
   }
   
   return(site_list)
 }
 
 asvs_by_site <- site_subset(abun_sub, meta_sub)
+
+names(asvs_by_site[["DrumRoad, Marine"]]) <- "X102318"
 
 #4, 5
 
@@ -66,7 +99,7 @@ make_emp_list <- function(site, site_list, meta_table, asv_table) {
   dat <- site_list[[site]]
   samples <- names(dat)
   
-  sub_met <- meta_table[which(meta_table$sequencing_id %in% samples),]
+  sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
   
   empo3 <- unique(sub_met$empo_3)
   emp_list <- list()
@@ -119,13 +152,14 @@ for (i in 1:length(emp_asv_sums)) {
 }
 
 
-saveRDS(inext_results, "../outputs/list_of_inext_results_by_site.rds")
+saveRDS(inext_results, "../outputs/list_of_inext_results_by_site_and_hab.rds")
 
 lapply(inext_results, ggiNEXT)
 
 ```
 
 ```{r}
+
 plot_list <- list()
 
 for (i in 1:length(inext_results)) {
@@ -149,14 +183,14 @@ for (i in 1:length(inext_results)) {
   plot_list[[i]] <- plot
 }
 
-saveRDS(plot_list, "../intermediates/emp_accum_curve_plot_list.rds")
+saveRDS(plot_list, "../intermediates/emp_accum_curve_plot_list_with_habitat.rds")
 
 ```
 
 ```{r}
 
 for (i in 1:length(plot_list)) {
-  ggsave(filename = paste0("../figures/emp_accum_curves/", sites[[i]], "_accum_curve.png"), plot = plot_list[[i]], width = 8, height = 5)
+  ggsave(filename = paste0("../figures/emp_accum_curves/", sites[[i]], "_accum_curve_with_hab.png"), plot = plot_list[[i]], width = 8, height = 5)
 }
 
 ```

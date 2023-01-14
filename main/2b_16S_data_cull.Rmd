@@ -1,0 +1,40 @@
+---
+title: "2b_16S_data_cull"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+```
+
+```{r}
+## from Sean's github: soswift/microbial_mapping/main/MM_5_Rarefaction.R 
+
+# Read in raw otu table and sample data
+otu_file         <- "../16S_data/cleaned/raw_mm_16s_hiseqsabundance_table.csv"
+sample_data_file <- "../16S_data/cleaned/mm_16s_hiseqs_metadata_table.csv"
+
+sample_dat     <- fread(sample_data_file)
+
+otu_table_raw  <- fread(otu_file)
+
+# Make clean numeric abundance data.frame with samples as columns and ASVs as rows
+sample_ids <- otu_table_raw$Group
+otu_table_raw[ , Group := NULL]
+otu_mat <- t(setDF(otu_table_raw, rownames = sample_ids))
+
+
+
+# Drop controls and samples with less than 10000 reads
+sample_dat <- sample_dat[habitat %in% c("Marine","Terrestrial","Riverine")]
+otu_mat[colnames(otu_mat) %in% sample_dat$sequencing_id]
+otu_mat <- otu_mat[ , colSums(otu_mat) > 10000]
+
+saveRDS(otu_mat, "../16S_data/cleaned_16s_asv_matrix.rds")
+saveRDS(sample_dat, "../16S_data/cleaned_16s_metadata.rds")
+```
+
