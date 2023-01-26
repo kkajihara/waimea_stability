@@ -99,40 +99,224 @@ names(emp_asv_sums) <- names(asvs_by_site)
 
 
 ```{r}
-make_abunocc_list <- function(site, site_list, meta_table, asv_table) {
-  
-  dat <- site_list[[site]]
-  samples <- names(dat)
-  
-  sub_met <- meta_table[which(meta_table$sequencing_id %in% samples),]
-  
-  empo3 <- unique(sub_met$empo_3)
-  emp_list <- list()
-  
-  for (e in empo3) {
-    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
-    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
-    sub_abun <- data.frame(sub_abun)
-    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
-    sub_abun <- data.frame(sub_abun)
-    
-    asv_sums <- data.frame(rowSums(sub_abun))
-    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
-    names(asv_sums) <- c("ASV abundance", "Sample frequency")
-    
-    emp_list[[e]] <- asv_sums
-  }
-  
-  return(emp_list)
+
+hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = meta_sub[which(meta_sub$habitat==a_hab),] 
+  hab_samps[[a_hab]] = x$sequencing_id
 }
 
-plot(asv_sums$`Sample frequency`, log(asv_sums$`ASV abundance`), main = "Site = OutsideRocks, EMPO3 = Plant corpus", ylab="log(asv_abundance)", xlab="sample_frequency")
+hab_samps <- lapply(hab_samps, as.character)
+
+hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = abun_sub[,which(colnames(abun_sub) %in% hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  hab_abuns[[a_hab]] <- y
+}
+
+names(hab_abuns) <- habs
+
+
+asv_sums <- data.frame(rowSums(abun_sub))
+asv_sums$sample_freq <- apply(abun_sub, 1, function(c)sum(c!=0))
+names(asv_sums) <- c("asv_abundance", "sample_freq")
+
+asv_sums <- arrange(asv_sums, desc(sample_freq))
+asv_sums$num <- seq(1:nrow(asv_sums))
+
+library(ggplot2)
+
+# p <- ggplot(asv_sums, aes(y=sample_freq, x=num)) +
+#   geom_point(alpha = 0.3, color = "#0097c3") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "ITS ASV sample abundance",
+#        y = "sample_frequency",
+#        x = "ASV")
+# 
+# p_zoom <- ggplot(asv_sums, aes(y=sample_freq, x=num)) +
+#   geom_point(alpha = 0.3, color = "#0097c3") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "ITS ASV sample abundance (zoomed in)",
+#        y = "sample_frequency",
+#        x = "ASV") +
+#   scale_x_continuous(limits = c(0,8000))
+
+
+
+terr_only <- asv_sums[(rownames(asv_sums) %in% rownames(hab_abuns[["Terrestrial"]])),]
+
+# red color #f24f26
+
+p_terr <- ggplot(terr_only, aes(x=num, y=sample_freq)) +
+  geom_point(alpha = 0.2, color = "#0097c3") +
+  theme(axis.text.x = element_blank(),
+          axis.line = element_line(colour="black")) +
+  theme_classic() +
+  labs(title = "Terrestrial ITS ASV sample abundance",
+       y = "sample_frequency",
+       x = "ASV")
+
+p_terr_zoom <- ggplot(terr_only, aes(x=num, y=sample_freq)) +
+  geom_point(alpha = 0.2, color = "#0097c3") +
+  theme(axis.text.x = element_blank(),
+          axis.line = element_line(colour="black")) +
+  theme_classic() +
+  labs(title = "Terrestrial ITS ASV sample abundance (zoom)",
+       y = "sample_frequency",
+       x = "ASV") +
+  scale_x_continuous(limits = c(0,5000))
+
+
+# no_marine <- asv_sums[!(rownames(asv_sums) %in% rownames(hab_abuns[["Marine"]])),]
+# 
+# p_nomar <- ggplot(no_marine, aes(x=num, y=sample_freq)) +
+#   geom_point(alpha = 0.2, color = "#f24f26") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "ITS ASV sample abundance (No Marine)",
+#        y = "sample_frequency",
+#        x = "ASV") 
+# 
+# 
+# p_nomar_zoom <- ggplot(no_marine, aes(x=num, y=sample_freq)) +
+#   geom_point(alpha = 0.2, color = "#f24f26") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "ITS ASV sample abundance (No Marine, zoomed in)",
+#        y = "sample_frequency",
+#        x = "ASV") +
+#   scale_x_continuous(limits = c(0,15000))
+
+
+library(ggpubr)
+
+# twoplot <- ggarrange(p, p_nomar, ncol = 2)
+
+
+```
+
+Do for bacteria!!
+
+```{r}
+# read in bacteria data
+bact_asv_table <- as.data.frame(readRDS("../16s_data/cleaned_16s_asv_matrix.rds"))
+bact_metadata <- readRDS("../16s_data/cleaned_16s_metadata.rds")
+
+bact_asv_table <- bact_asv_table[,which(names(bact_asv_table) %in% bact_metadata$sequencing_id)]
+bact_metadata <- bact_metadata[which(bact_metadata$sequencing_id %in% names(bact_asv_table)),]
 
 ```
 
 
+```{r}
+
+bact_hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = bact_metadata[which(bact_metadata$habitat==a_hab),] 
+  bact_hab_samps[[a_hab]] = x$sequencing_id
+}
+
+bact_hab_samps <- lapply(bact_hab_samps, as.character)
+
+bact_hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = bact_asv_table[,which(colnames(bact_asv_table) %in% bact_hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  bact_hab_abuns[[a_hab]] <- y
+}
+
+names(bact_hab_abuns) <- habs
 
 
+bact_asv_sums <- data.frame(rowSums(bact_asv_table))
+bact_asv_sums$sample_freq <- apply(bact_asv_table, 1, function(c)sum(c!=0))
+names(bact_asv_sums) <- c("asv_abundance", "sample_freq")
+
+bact_asv_sums <- arrange(bact_asv_sums, desc(sample_freq))
+bact_asv_sums$num <- seq(1:nrow(bact_asv_sums))
+
+
+bact_terr_only <- bact_asv_sums[(rownames(bact_asv_sums) %in% rownames(bact_hab_abuns[["Terrestrial"]])),]
+
+bact_p_terr <- ggplot(bact_terr_only, aes(y=sample_freq, x=num)) +
+  geom_point(alpha = 0.3, color = "#a7ba42") +
+  theme(axis.text.x = element_blank(),
+          axis.line = element_line(colour="black")) +
+  theme_classic() +
+  labs(title = "Terrestrial 16S ASV sample abundance",
+       y = "sample_frequency",
+       x = "ASV") 
+
+bact_p_terr_zoom <- ggplot(bact_terr_only, aes(y=sample_freq, x=num)) +
+  geom_point(alpha = 0.3, color = "#a7ba42") +
+  theme(axis.text.x = element_blank(),
+          axis.line = element_line(colour="black")) +
+  theme_classic() +
+  labs(title = "Terrestrial 16S ASV sample abundance (zoom)",
+       y = "sample_frequency",
+       x = "ASV") +
+  scale_x_continuous(limits = c(0,30000))
+
+
+### Remove marine
+
+# bact_no_marine <- bact_asv_sums[!(rownames(bact_asv_sums) %in% rownames(bact_hab_abuns[["Marine"]])),]
+# 
+# bact_p_nomar <- ggplot(bact_no_marine, aes(x = num, y = sample_freq)) +
+#   geom_point(alpha = 0.2, color = "#f2cc84") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "16S ASV sample abundance (No Marine)",
+#        y = "sample_frequency",
+#        x = "ASV")
+# 
+# 
+# bact_p_nomar_zoom <- ggplot(bact_no_marine, aes(x = num, y = sample_freq)) +
+#   geom_point(alpha = 0.2, color = "#f2cc84") +
+#   theme(axis.text.x = element_blank(),
+#           axis.line = element_line(colour="black")) +
+#   theme_classic() +
+#   labs(title = "16S ASV sample abundance (No Marine, zoomed in)",
+#        y = "sample_frequency",
+#        x = "ASV") +
+#   scale_x_continuous(limits=c(0,120000))
+
+
+
+# twoplot <- ggarrange(bact_p, bact_p_nomar, ncol = 2)
+# ggsave("../figures/bacteria_abunocc_double_plot.png", width = 15, height = 6)
+
+#plot(asv_sums$`Sample frequency`, log(asv_sums$`ASV abundance`), main = "Site = OutsideRocks, EMPO3 = Plant corpus", ylab="log(asv_abundance)", xlab="sample_frequency")
+
+```
+
+
+```{r}
+fourplot <- ggarrange(p_terr, p_terr_zoom, bact_p_terr, bact_p_terr_zoom, ncol = 2, nrow = 2)
+ggsave("../figures/fung_and_bact_freq_dist_terr_only.png", width = 15, height = 12)
+
+# fourplot_zoom <- ggarrange(p_zoom, p_nomar_zoom, bact_p_zoom, bact_p_nomar_zoom, ncol = 2, nrow = 2)
+# ggsave("../figures/fung_and_bact_freq_dist_zoom.png", width = 15, height = 12)
+
+```
 
 
 

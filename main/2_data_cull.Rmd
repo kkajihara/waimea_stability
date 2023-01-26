@@ -247,16 +247,26 @@ The 100 read line (blue) appears to be around a somewhat "break" in the data?
 
 ```{r cull, echo=FALSE, message=FALSE}
 
+its_meta <- its_meta[its_meta$habitat %in% c("Marine","Terrestrial","Riverine"),]
+
 # want to figure out where that natural break in the data is (somewhere around 100 reads per sample)
 # adjusting the plot from earlier, it seems to be around 160 reads
 
 # so, want to cull the abundance file (and then reduce the metadata and tax files by samples or ASVs that are no longer there)
 
+# original ITS asv table dimensions: 50129 ASVs, 1632 samples
+
 culled_abun <- abun[,colSums(abun)>160] # 105 samples removed, 1572 remain
 # remove ASVs with only one read
 culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 13 ASVs removed, 50116 remain
 
-saveRDS(culled_abun, "../intermediates/culled_asv_table.rds")
+#remove aerosols and fungus corpus (empo3 categories)
+its_meta <- its_meta[which(!(its_meta$empo_3 %in% c("Aerosol (non-saline)", "Fungus corpus"))),]
+
+culled_abun <- culled_abun[,colnames(culled_abun) %in% its_meta$sequencing_id] # 1541 samples remain
+culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 49908 ASVs remain
+
+saveRDS(culled_abun, "../intermediates/culled_asv_table_aerosols_and_fung_corp_removed.rds")
 
 
 # cull tax table
@@ -267,7 +277,7 @@ saveRDS(culled_tax, "../intermediates/culled_tax_table.rds")
 # cull metadata
 culled_meta <- its_meta[its_meta$sequencing_id %in% names(culled_abun),]
 
-saveRDS(culled_meta, "../intermediates/culled_metadata.rds")
+saveRDS(culled_meta, "../intermediates/culled_metadata_no_aerosols_fung_corp.rds")
 
 
 ```

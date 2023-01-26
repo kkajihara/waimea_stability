@@ -1,0 +1,117 @@
+---
+title: "10_fung_bact_data_matchup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+```
+
+Goal:
+-Match up samples between 16S and ITS datasets
+-Subset each by site and then empo3 category
+
+Later, run a test network with the subsetted data
+
+```{r}
+# read in data
+fung_asv_table <- readRDS("../intermediates/culled_asv_table_aerosols_and_fung_corp_removed.rds") # 49749 ASVs, 1443 samples
+fung_metadata <- readRDS("../intermediates/culled_metadata_no_aerosols_fung_corp.rds")
+
+bact_asv_table <- readRDS("../intermediates/culled_bact_asv_table_aerosols_and_fung_corp_removed.rds") # 324718 ASVs, 1464 samples
+bact_metadata <- readRDS("../intermediates/culled_bact_metadata_aerosols_and_fung_corp_removed.rds")
+
+
+full_met <- read.csv("../metadata/all_waimea_hiseq_sample_metadata.csv") # 3206 samples
+
+fung_meta_raw <- full_met[grep("ITS", full_met$locus, ignore.case = T),] # 1586 samples
+bact_meta_raw <- full_met[grep("16S", full_met$locus, ignore.case = T),] # 1620
+
+```
+
+```{r}
+full_met <- full_met[full_met$habitat %in% c("Marine","Terrestrial","Riverine"),]
+
+fung_meta_match <- fung_metadata[fung_metadata$sample_id %in% bact_metadata$sample_id,]
+
+bact_meta_match <- bact_metadata[bact_metadata$sample_id %in% fung_metadata$sample_id,]
+
+matched_ids <- fung_meta_match$sample_id
+
+
+fung_nonmatch_id <- fung_metadata[!(fung_metadata$sample_id %in% matched_ids),]
+
+bact_nonmatch_id <- bact_metadata[!(bact_metadata$sample_id %in% matched_ids),]
+
+f_nonmatch_ids <- fung_nonmatch_id$sample_id
+b_nonmatch_ids <- bact_nonmatch_id$sample_id
+
+# 71 samples don't have complements between the datasets
+# bacteria has 21 more samples than fungi due to the results of prior culling steps
+
+
+test <- full_met[full_met$sample_id %in% bact_nonmatch_id$sample_id,]
+
+write.csv(test, "../intermediates/waimea_samples_with_no_complement_between_fung_bact.csv")
+
+
+a <- fung_metadata[which(fung_metadata$sample_id %in% f_nonmatch_ids),]
+b <- bact_metadata[which(bact_metadata$sample_id %in% b_nonmatch_ids),]
+
+library(plyr)
+
+c <- rbind.fill(a, b)
+
+remove_these <- c("is.neg", "photo.notes", "photo")
+
+c <- c[,!(names(c) %in% remove_these)]
+
+
+
+c <- fung_metadata[which(fung_metadata$sample_id %in% f_nonmatch_ids),]$sequencing_id
+d <- bact_metadata[which(bact_metadata$sample_id %in% b_nonmatch_ids),]$sequencing_id
+
+e <- fung_asv_table[,names(fung_asv_table) %in% c]
+e <- e[rowSums(e)>0,]
+ee <- apply(e, 1, function(x) sum(x!=0))
+
+f <- bact_asv_table[,names(bact_asv_table) %in% d]
+f <- f[rowSums(f)>0,]
+ff <- apply(f, 1, function(x) sum(x!=0))
+
+
+
+```
+
+```{r}
+# subset asv tables by samples matched in 16S and ITS
+fung_asv_match <- fung_asv_table[,colnames(fung_asv_table) %in% fung_meta_match$sequencing_id] # 1372 samples remain
+fung_asv_match <- fung_asv_match[rowSums(fung_asv_match)>0,] # 49747 ASVs remain
+
+bact_asv_match <- bact_asv_table[,colnames(bact_asv_table) %in% bact_meta_match$sequencing_id] # 1372 samples remain
+bact_asv_match <- bact_asv_match[rowSums(bact_asv_match)>0,] # 313568 ASVs remain
+
+
+saveRDS(fung_asv_match, "../intermediates/fungal_asv_table_matched_up.rds")
+saveRDS(fung_meta_match, "../intermediates/fungal_metadata_matched_up.rds")
+saveRDS(bact_asv_match, "../intermediates/bact_asv_table_matched_up.rds")
+saveRDS(bact_meta_match, "../intermediates/bact_metadata_matched_up.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

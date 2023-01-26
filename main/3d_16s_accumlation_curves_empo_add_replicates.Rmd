@@ -22,27 +22,21 @@ library(ggpubr)
 
 ```{r}
 # read in data
-culled_abun <- readRDS("../intermediates/culled_asv_table.rds")
-#culled_tax <- readRDS("stuff_to_scp/culled_tax_table.rds")
-culled_meta <- readRDS("../intermediates/culled_metadata_edited_trophic.rds")
+bact_abun <- readRDS("../intermediates/bact_asv_table_matched_up.rds")
+bact_met <- readRDS("../intermediates/bact_metadata_matched_up.rds")
 
-culled_meta <- data.frame(culled_meta)
+# count all beach samples as riverine
+bact_met[bact_met$site_name=="Beach" & bact_met$sample_type=="WaterSaline",]$habitat = "Riverine"
+
 ```
 
 ```{r}
 # goal: accumulation curves by empo3 category, per plot(?)
 # I think the plots correspond to 'site_name' - there are no distinct lat-lon combos within site
 
-# sites to remove: Lab and NA
-meta_sub <- culled_meta[which(!culled_meta$site_name %in% c("Lab", NA)),]
-
-abun_sub <- culled_abun[,which(names(culled_abun) %in% meta_sub$sequencing_id)]
-abun_sub <- abun_sub[which(rowSums(abun_sub) > 0),]
-
-
 # sample names in abundance table eventually get "X" appended due to the colnames being numeric
 # make a new column with these names
-meta_sub$x_seq_ids <- paste0("X", meta_sub$sequencing_id)
+bact_met$x_seq_ids <- paste0("X", bact_met$sequencing_id)
 ```
 
 ```{r}
@@ -93,9 +87,9 @@ site_subset <- function(asv_table, meta_table) {
   return(site_list)
 }
 
-asvs_by_site <- site_subset(abun_sub, meta_sub)
+bact_asvs_by_site <- site_subset(bact_abun, bact_met)
 
-names(asvs_by_site[["DrumRoad, Marine"]]) <- "X102318"
+bact_asvs_by_site <- bact_asvs_by_site[order(names(bact_asvs_by_site))]
 
 #4, 5
 
@@ -123,15 +117,15 @@ make_emp_list <- function(site, site_list, meta_table, asv_table) {
   return(emp_list)
 }
 
-sites <- names(asvs_by_site)
+sites <- names(bact_asvs_by_site)
 
-emp_asv_sums <- lapply(sites,
-                make_emp_list,
-                asvs_by_site,
-                meta_sub,
-                abun_sub)
+bact_emp_asv_sums <- lapply(sites,
+                            make_emp_list,
+                            bact_asvs_by_site,
+                            bact_met,
+                            bact_abun)
 
-names(emp_asv_sums) <- names(asvs_by_site)
+names(bact_emp_asv_sums) <- names(bact_asvs_by_site)
 
 ```
 
@@ -144,33 +138,33 @@ names(emp_asv_sums) <- names(asvs_by_site)
 
 #inext_list <- lapply(emp_asv_sums, function(x) iNEXT(x, nboot=200))
 
-inext_results <- list()
+bact_inext_results <- list()
 
-for (i in 1:length(emp_asv_sums)) {
-  dat <- emp_asv_sums[[i]]
+for (i in 1:length(bact_emp_asv_sums)) {
+  dat <- bact_emp_asv_sums[[i]]
   counts <- sapply(dat, sum)
   end <- max(counts)
   
   curve_calc <- iNEXT(dat, nboot = 200, endpoint = (end*2))
   
-  inext_results[[i]] <- curve_calc
+  bact_inext_results[[i]] <- curve_calc
 }
 
 
-saveRDS(inext_results, "../outputs/list_of_inext_results_by_site_and_hab.rds")
+saveRDS(bact_inext_results, "../outputs/list_of_bact_inext_results_by_site_and_hab.rds")
 
-lapply(inext_results, ggiNEXT)
+lapply(bact_inext_results, ggiNEXT)
 
 ```
 
 ```{r}
 
-plot_list <- list()
+bact_plot_list <- list()
 
-for (i in 1:length(inext_results)) {
-  subt <- paste0("ASVs = ", nrow(asvs_by_site[[i]]), ", Samples = ", ncol(asvs_by_site[[i]]))
+for (i in 1:length(bact_inext_results)) {
+  subt <- paste0("ASVs = ", nrow(bact_asvs_by_site[[i]]), ", Samples = ", ncol(bact_asvs_by_site[[i]]))
   
-  plot <- ggiNEXT(inext_results[[i]]) +
+  plot <- ggiNEXT(bact_inext_results[[i]]) +
   theme_classic() +
   labs(title = paste(sites[[i]], subt, sep="\n")) +
   theme(plot.title = element_text(hjust = 0.5,
@@ -179,7 +173,7 @@ for (i in 1:length(inext_results)) {
                                   margin = margin(0,0,20,0)),
         axis.title.x = element_text(vjust=-2),
         axis.title.y = element_text(vjust=2)) +
-  scale_shape_manual(values = rep(19, length(emp_asv_sums[[i]]))) +
+  scale_shape_manual(values = rep(19, length(bact_emp_asv_sums[[i]]))) +
   #scale_color_brewer(palette = "Set2") +
   #scale_fill_brewer(palette = "Set2") +
   theme(plot.margin = margin(20,10,20,5)) +
@@ -187,17 +181,17 @@ for (i in 1:length(inext_results)) {
   xlab("Number of sequences") +
   ylab("ASV richness")
   
-  plot_list[[i]] <- plot
+  bact_plot_list[[i]] <- plot
 }
 
-saveRDS(plot_list, "../intermediates/emp_accum_curve_plot_list_with_habitat.rds")
+saveRDS(bact_plot_list, "../intermediates/bact_emp_accum_curve_plot_list_with_habitat.rds")
 
 ```
 
 ```{r}
 
-for (i in 1:length(plot_list)) {
-  ggsave(filename = paste0("../figures/emp_accum_curves/", sites[[i]], "_accum_curve_with_hab.png"), plot = plot_list[[i]], width = 8, height = 5)
+for (i in 1:length(bact_plot_list)) {
+  ggsave(filename = paste0("../figures/bact_emp_accum_curves/", sites[[i]], "bact_accum_curve_with_hab.png"), plot = bact_plot_list[[i]], width = 8, height = 5)
 }
 
 ```

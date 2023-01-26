@@ -1,0 +1,334 @@
+---
+title: "9a_network_data_cull"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+# data import
+fung_asv_table <- readRDS("../intermediates/culled_asv_table.rds")
+fung_metadata <- readRDS("../intermediates/culled_metadata_edited_trophic.rds")
+
+bact_asv_table <- as.data.frame(readRDS("../16s_data/cleaned_16s_asv_matrix.rds"))
+bact_metadata <- readRDS("../16s_data/cleaned_16s_metadata.rds")
+
+bact_asv_table <- bact_asv_table[,which(names(bact_asv_table) %in% bact_metadata$sequencing_id)]
+bact_metadata <- bact_metadata[which(bact_metadata$sequencing_id %in% names(bact_asv_table)),]
+
+```
+
+```{r}
+all_meta <- read.csv("../metadata/all_waimea_hiseq_sample_metadata.csv")
+
+table(all_meta$sample_id) # sample_id has pairs between 16S and ITS, sequencing_id are all unique
+
+# which sample_ids are in both datasets - 1372 samples
+bact_metadata_match <- bact_metadata[which(bact_metadata$sample_id %in% fung_metadata$sample_id),]
+fung_metadata_match <- fung_metadata[which(fung_metadata$sample_id %in% bact_metadata$sample_id),]
+
+# filter each set
+bact_asv_table_match <- bact_asv_table[,which(names(bact_asv_table) %in% bact_metadata_match$sequencing_id)]
+bact_asv_table_match <- bact_asv_table_match[rowSums(bact_asv_table_match)>0,]
+
+fung_asv_table_match <- fung_asv_table[,which(names(fung_asv_table) %in% fung_metadata_match$sequencing_id)]
+fung_asv_table_match <- fung_asv_table_match[rowSums(fung_asv_table_match)>0,]
+
+```
+
+```{r}
+
+f_sums <- data.frame(rowSums(fung_asv_table_match))
+f_sums$sample_freq <- apply(fung_asv_table_match, 1, function(c)sum(c!=0))
+f_sums <- f_sums[order(-f_sums$sample_freq),]
+f_sums$pct <- f_sums$sample_freq / nrow(fung_metadata_match)
+
+names(f_sums) <- c("asv_abundance", "sample_frequency", "percent_occupancy")
+
+f_over20 <- f_sums[f_sums$percent_occupancy>=0.2,] # 61 ASVs
+
+f_over10 <- f_sums[f_sums$percent_occupancy>=0.1,] # 239 ASVs
+
+f_over05 <- f_sums[f_sums$percent_occupancy>=0.05,] # 778 ASVs
+
+f_over01 <- f_sums[f_sums$percent_occupancy>=0.01,] # 4934 ASVs, ~10% of original ASVs (48351 ASVs)
+
+f_total <- list(f_over20, f_over10, f_over05, f_over01)
+f_asvs_kept <- sapply(f_total, nrow)
+
+f_tot_asvs <- nrow(f_sums)
+
+
+b_sums <- data.frame(rowSums(bact_asv_table_match))
+b_sums$sample_freq <- apply(bact_asv_table_match, 1, function(c)sum(c!=0))
+b_sums <- b_sums[order(-b_sums$sample_freq),]
+b_sums$pct <- b_sums$sample_freq / nrow(bact_metadata_match)
+
+names(b_sums) <- c("asv_abundance", "sample_frequency", "percent_occupancy")
+
+b_over20 <- b_sums[b_sums$percent_occupancy>=0.2,] # 65 ASVs
+
+b_over10 <- b_sums[b_sums$percent_occupancy>=0.1,] # 650 ASVs
+
+b_over05 <- b_sums[b_sums$percent_occupancy>=0.05,] # 2689 ASVs
+
+b_over01 <- b_sums[b_sums$percent_occupancy>=0.01,] # 23465 ASVs, ~7% of original ASVs (317331 ASVs)
+    
+b_total <- list(b_over20, b_over10, b_over05, b_over01)
+b_asvs_kept <- sapply(b_total, nrow)
+
+b_tot_asvs <- nrow(b_sums) 
+
+```
+
+
+```{r}
+# PASTED FROM 3a_accumulation_curves_empo.Rmd
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+fung_metadata_match$x_seq_ids <- paste0("X", fung_metadata_match$sequencing_id)
+bact_metadata_match$x_seq_ids <- paste0("X", bact_metadata_match$sequencing_id)
+
+# want one list per plot/site, where each item in the list is a vector of nonzero ASV abundances corresponding to each EMPO3 cateogory
+# gonna need a loop or apply
+
+# also want to subset sites with multiple habitats (stream, marine, terrestrial) by habitat type
+
+site_subset <- function(asv_table, meta_table) {
+  sites <- unique(meta_table$site_name)
+  
+  site_list <- list()
+  
+  for (a_site in sites) {
+    sub_met <- meta_table[which(meta_table$site_name==a_site),]
+    
+      if (length(unique(sub_met$habitat != 1))) {
+        habs <- unique(sub_met$habitat)
+        
+          for (a_hab in habs) {
+            sub_hab_met <- sub_met[which(sub_met$habitat==a_hab),]
+            
+            sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_hab_met$sequencing_id)]
+            sub_hab_abun <- data.frame(sub_hab_abun)
+            sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+            sub_hab_abun <- data.frame(sub_hab_abun)
+            
+            site_hab_name <- paste(a_site, a_hab, sep=", ")
+            
+            site_list[[site_hab_name]] <- sub_hab_abun
+            
+          }
+        
+      } else {
+        
+        sub_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+        sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+        
+        hab <- unique(sub_met$habitat)
+        hab_name <- paste(a_site, hab, sep=", ")
+        
+        site_list[[hab_name]] <- sub_abun
+        
+      }
+    
+  }
+  
+  return(site_list)
+}
+
+fung_asvs_by_site <- site_subset(fung_asv_table_match, fung_metadata_match)
+
+bact_asvs_by_site <- site_subset(bact_asv_table_match, bact_metadata_match)
+
+names(fung_asvs_by_site[["DrumRoad, Marine"]]) <- "X102318"
+
+#4, 5
+
+make_emp_list <- function(site, site_list, meta_table, asv_table) {
+  
+  dat <- site_list[[site]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$count <- apply(sub_abun, 1, function(c)sum(c!=0))
+    asv_sums <- asv_sums[order(-asv_sums$count),]
+    asv_sums$pct <- asv_sums$count / ncol(sub_abun)
+    asv_sums$total <- rep(ncol(sub_abun), nrow(asv_sums))
+
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+sites <- names(fung_asvs_by_site)
+
+fung_emp_asv_sums <- lapply(sites,
+                            make_emp_list,
+                            fung_asvs_by_site,
+                            fung_metadata_match,
+                            fung_asv_table_match)
+
+names(fung_emp_asv_sums) <- names(fung_asvs_by_site)
+
+```
+
+```{r}
+# fungi test by empo/habitat
+test_sums <- data.frame(rowSums(fung_asvs_by_site[[19]])) # Entrance, Terrestrial
+test_sums$sample_freq <- apply(fung_asvs_by_site[[19]], 1, function(c)sum(c!=0))
+test_sums <- test_sums[order(-test_sums$sample_freq),]
+test_sums$pct <- test_sums$sample_freq / ncol(fung_asvs_by_site[[1]])
+
+names(test_sums) <- c("asv_abundance", "sample_frequency", "percent_occupancy")
+
+test_over20 <- test_sums[test_sums$percent_occupancy>=0.2,] # 992 ASVs (7.7%)
+
+test_over10 <- test_sums[test_sums$percent_occupancy>=0.1,] # 1967 ASVs (15.3%)
+
+test_over05 <- test_sums[test_sums$percent_occupancy>=0.05,] # 4111 ASVs (32%)
+
+test_over01 <- test_sums[test_sums$percent_occupancy>=0.01,] # 12884 ASVs (100%)
+
+test_total <- list(test_over20, test_over10, test_over05, test_over01)
+test_asvs_kept <- sapply(test_total, nrow)
+
+test_tot_asvs <- nrow(fung_asvs_by_site[[19]])
+
+
+# bact test by empo/habitat
+test2_sums <- data.frame(rowSums(bact_asvs_by_site[[1]])) # Entrance, Terrestrial
+test2_sums$sample_freq <- apply(bact_asvs_by_site[[1]], 1, function(c)sum(c!=0))
+test2_sums <- test2_sums[order(-test2_sums$sample_freq),]
+test2_sums$pct <- test2_sums$sample_freq / ncol(bact_asvs_by_site[[1]])
+
+names(test2_sums) <- c("asv_abundance", "sample_frequency", "percent_occupancy")
+
+test2_over20 <- test2_sums[test2_sums$percent_occupancy>=0.2,] # 284 ASVs (0.5%)
+
+test2_over10 <- test2_sums[test2_sums$percent_occupancy>=0.1,] # 1842 ASVs (3.3%)
+
+test2_over05 <- test2_sums[test2_sums$percent_occupancy>=0.05,] # 5792 ASVs (10.7%)
+
+test2_over01 <- test2_sums[test2_sums$percent_occupancy>=0.01,] # 23484 ASVs (43.3%)
+
+test2_total <- list(test2_over20, test2_over10, test2_over05, test2_over01)
+test2_asvs_kept <- sapply(test2_total, nrow)
+
+test2_tot_asvs <- nrow(bact_asvs_by_site[[1]])
+```
+
+```{r}
+emp_test_sums <- data.frame(fung_emp_asv_sums[[19]][3]) # Entrance, Terrestrial (Plant corpus)
+names(emp_test_sums) <- c("abun", "samp_count", "pct", "total")
+
+emp_test_over20 <- emp_test_sums[emp_test_sums$pct>=0.2,] # 528 ASVs (17.1%)
+
+emp_test_over10 <- emp_test_sums[emp_test_sums$pct>=0.1,] # 1281 ASVs (41.4%)
+
+emp_test_over05 <- emp_test_sums[emp_test_sums$pct>=0.05,] # 3092 ASVs (100%)
+
+emp_test_over01 <- emp_test_sums[emp_test_sums$pct>=0.01,] # 3092 ASVs (100%, but just by virtue of max number of samples being less than 100)
+
+emp_test_total <- list(emp_test_over20, emp_test_over10, emp_test_over05, emp_test_over01)
+emp_test_asvs_kept <- sapply(emp_test_total, nrow)
+
+emp_test_tot_asvs <- nrow(data.frame(fung_emp_asv_sums[[19]][3]))
+
+# bact emp_test by empo/habitat
+
+sites2 <- names(bact_asvs_by_site)
+
+bact_emp_asv_sums <- lapply(sites2,
+                            make_emp_list,
+                            bact_asvs_by_site,
+                            bact_metadata_match,
+                            bact_asv_table_match)
+
+names(bact_emp_asv_sums) <- names(bact_asvs_by_site)
+
+emp_test2_sums <- data.frame(bact_emp_asv_sums[[1]][2]) # Entrance, Terrestrial, Plant corpus
+names(emp_test2_sums) <- c("abun", "samp_count", "pct", "total")
+
+
+emp_test2_over20 <- emp_test2_sums[emp_test2_sums$pct>=0.2,] # 583 ASVs (9.3%)
+
+emp_test2_over10 <- emp_test2_sums[emp_test2_sums$pct>=0.1,] # 1963 ASVs (31.3%)
+
+emp_test2_over05 <- emp_test2_sums[emp_test2_sums$pct>=0.05,] # 6270 ASVs (100%)
+
+emp_test2_over01 <- emp_test2_sums[emp_test2_sums$pct>=0.01,] # 6270 ASVs (100%)
+
+
+emp_test2_total <- list(emp_test2_over20, emp_test2_over10, emp_test2_over05, emp_test2_over01)
+emp_test2_asvs_kept <- sapply(emp_test2_total, nrow)
+
+emp_test2_tot_asvs <- nrow(data.frame(bact_emp_asv_sums[[1]][2]))
+
+```
+
+```{r}
+# make a data frame of proportions of ASVs kept
+full_dom_tab <- data.frame(f_asvs_kept, b_asvs_kept)
+full_dom_tab$f_pct <- round((full_dom_tab$f_asvs_kept / f_tot_asvs) * 100, 3)
+full_dom_tab$b_pct <- round((full_dom_tab$b_asvs_kept / b_tot_asvs) * 100, 3)
+full_dom_tab <- select(full_dom_tab, 1, 3, 2, 4)
+
+
+make_prop_table <- function(fungi_asv_vector, bact_asv_vector, fungi_total, bact_total, label) {
+  
+  tab <- data.frame(fungi_asv_vector, bact_asv_vector)
+  
+  tab$fung_pct <- round((tab$fungi_asv_vector / fungi_total) * 100, 3)
+  tab$bact_pct <- round((tab$bact_asv_vector / bact_total) * 100, 3)
+  
+  tab <- select(tab, 1, 3, 2, 4)
+  rownames(tab) <- c("Over 20%", "Over 10%", "Over 5%", "Over 1%")
+  
+  names(tab)[1] <- paste("fungi", label, "asvs", sep="_")
+  names(tab)[3] <- paste("bact", label, "asvs", sep="_")
+  
+  return(tab)
+  
+}
+
+full_domain_table <- make_prop_table(f_asvs_kept, b_asvs_kept, f_tot_asvs, b_tot_asvs,
+                                     label = "full_domain")
+
+site_table <- make_prop_table(test_asvs_kept, test2_asvs_kept, test_tot_asvs, test2_tot_asvs,
+                                     label = "site")
+
+site_empo_table <- make_prop_table(emp_test_asvs_kept, emp_test2_asvs_kept, 
+                                   emp_test_tot_asvs, emp_test2_tot_asvs,
+                                     label = "site_empo")
+
+asv_proportion_tables <- list(full_domain_table, site_table, site_empo_table)
+
+saveRDS(asv_proportion_tables, "../intermediates/tables_of_asvs_kept_at_various_sampocc_cutoffs.rds")
+
+```
+
+
+
+
+
+

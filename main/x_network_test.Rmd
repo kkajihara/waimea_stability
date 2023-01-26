@@ -1,0 +1,98 @@
+---
+title: "x_network_test"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#spiec-easi install
+# library(devtools)
+# install_github("zdk123/SpiecEasi")
+```
+
+
+```{r}
+# spiec-easi cross domain example
+
+library(phyloseq)
+library(SpiecEasi)
+library(job)
+library(dplyr)
+
+# package example
+data(hmp2)
+se.hmp2 <- spiec.easi(list(hmp216S, hmp2prot), method='mb', nlambda=40,
+              lambda.min.ratio=1e-2, pulsar.params = list(thresh = 0.05))
+
+dtype <- c(rep(1,ntaxa(hmp216S)), rep(2,ntaxa(hmp2prot)))
+plot(adj2igraph(getRefit(se.hmp2)), vertex.color=dtype+1, vertex.size=9)
+```
+
+```{r}
+# test
+test_its_met <- its_metadata[which(its_metadata$empo_3=="Plant corpus" & its_metadata$site_name=="DrumRoad"),]
+test_16s_met <- bact_metadata[which(bact_metadata$empo_3=="Plant corpus" & bact_metadata$site_name=="DrumRoad"),]
+test_16s_met <- test_16s_met[which(test_16s_met$sample_id %in% test_its_met$sample_id),]
+test_its_met <- test_its_met[which(test_its_met$sample_id %in% test_16s_met$sample_id),]
+
+test_ids <- test_16s_met$sample_id
+
+## JUST TEMPORARY I DIDN'T MAKE SURE THESE WERE MATCHED UP BY SEQUENCING_ID
+names(its_asv_table) <- its_metadata$sample_id
+names(bact_asv_table) <- bact_metadata$sample_id
+
+test_its_asvs <- its_asv_table[,names(its_asv_table) %in% test_ids]
+test_its_asvs <- test_its_asvs[rowSums(test_its_asvs) > 0,]
+its_asvs <- test_its_asvs[,sort(colnames(test_its_asvs))]
+its_asvs <- t(its_asvs)
+# small_its_asvs <- sample_n(its_asvs, 400)
+# small_its_asvs <- t(small_its_asvs)
+
+test_16s_asvs <- bact_asv_table[,names(bact_asv_table) %in% test_ids]
+test_16s_asvs <- test_16s_asvs[rowSums(test_16s_asvs) > 0,]
+bact_asvs <- test_16s_asvs[,sort(colnames(test_16s_asvs))]
+# small_bact_asvs <- sample_n(bact_asvs, 600)
+# small_bact_asvs <- t(small_bact_asvs)
+
+its_test_network <- spiec.easi(its_asvs, method='glasso', pulsar.params = list(thresh=0.1))
+
+waimea_test_network <- spiec.easi(list(small_bact_asvs, small_its_asvs), method='glasso', pulsar.params = list(thresh=0.1))
+
+dtype <- c(rep(1,ncol(small_bact_asvs)), rep(2,ncol(small_its_asvs)))
+plot(adj2igraph(getRefit(waimea_test_network)), vertex.color=dtype+1, vertex.size=9)
+
+
+
+## bargs <- list(rep.num=50, seed=10010, conffile="path/to/conf.txt")
+#bargs <- list(rep.num=25, seed=10010, conffile="parallel")
+bargs <- list(rep.num=20, seed=10010, ncores=24)
+## See the config file stores:
+pulsar::findConfFile('parallel')
+
+## uncomment line below to turn off batchtools reporting
+# options(batchtools.verbose=FALSE)
+
+# ncores cannot be an argument to pulsar.params when batch mode is in use
+# with batch mode, you need argument conffile
+se5 <- spiec.easi(small_its_asvs, method='glasso', lambda.min.ratio=1e-3, nlambda=30, sel.criterion='stars', pulsar.params=bargs)
+
+dtype <- rep(1,ncol(small_its_asvs))
+plot(adj2igraph(getRefit(se5)), vertex.color=dtype+1, vertex.size=1)
+
+
+ # ssizes <- lapply(data, nrow)
+ #  snames <- lapply(data, row.names)
+```
+
+
+
+
+
+
+
+
+
+
