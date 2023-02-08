@@ -37,17 +37,30 @@ f_asv_sums_top1000 <- f_asv_sums[1:1000,]
 fung_abun_terr_freq_culled <- fung_abun_terr[rownames(fung_abun_terr) %in% f_asv_sums_top1000$asv,]
 fung_abun_terr_freq_culled <- fung_abun_terr_freq_culled[,colSums(fung_abun_terr_freq_culled)>0]
 
+#saveRDS(fung_abun_terr_freq_culled, "../networks/input_data/full_fungi_top1000_asv_table.rds")
+
 ```
 
 ```{r}
-## just for now, pick one empo3 category to run network with
-f_met_pc <- fung_met_terr[fung_met_terr$empo_3=="Plant corpus" & fung_met_terr$site_name=="Entrance",]
+## filter to one site
+f_met_pc <- fung_met_terr[fung_met_terr$site_name=="Entrance",]
 
-# 19 of 21 entrance plant corpus samples are in the top1000 terrestrial ITS ASV table
 f_abun_pc <- fung_abun_terr_freq_culled[,names(fung_abun_terr_freq_culled) %in% f_met_pc$sequencing_id]
 f_abun_pc <- f_abun_pc[rowSums(f_abun_pc)>0,]
 
-saveRDS(f_abun_pc, "../networks/input_data/fung_entrance_terr_top1000_plantcorpus.rds")
+saveRDS(f_abun_pc, "../networks/input_data/fung_entrance_terr_top1000_allempos_in_site_entrance.rds")
+
+```
+
+```{r}
+# ## just for now, pick one empo3 category to run network with
+# f_met_pc <- fung_met_terr[fung_met_terr$empo_3=="Plant corpus" & fung_met_terr$site_name=="Entrance",]
+# 
+# # 19 of 21 entrance plant corpus samples are in the top1000 terrestrial ITS ASV table
+# f_abun_pc <- fung_abun_terr_freq_culled[,names(fung_abun_terr_freq_culled) %in% f_met_pc$sequencing_id]
+# f_abun_pc <- f_abun_pc[rowSums(f_abun_pc)>0,]
+# 
+# saveRDS(f_abun_pc, "../networks/input_data/fung_entrance_terr_top1000_plantcorpus.rds")
 
 ```
 

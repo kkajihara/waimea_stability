@@ -90,7 +90,7 @@ ff <- apply(f, 1, function(x) sum(x!=0))
 ```{r}
 # subset asv tables by samples matched in 16S and ITS
 fung_asv_match <- fung_asv_table[,colnames(fung_asv_table) %in% fung_meta_match$sequencing_id] # 1372 samples remain
-fung_asv_match <- fung_asv_match[rowSums(fung_asv_match)>0,] # 49747 ASVs remain
+fung_asv_match <- fung_asv_match[rowSums(fung_asv_match)>0,] # 48819 ASVs remain
 
 bact_asv_match <- bact_asv_table[,colnames(bact_asv_table) %in% bact_meta_match$sequencing_id] # 1372 samples remain
 bact_asv_match <- bact_asv_match[rowSums(bact_asv_match)>0,] # 313568 ASVs remain
