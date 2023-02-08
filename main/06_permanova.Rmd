@@ -1,0 +1,114 @@
+---
+title: "6_permanova"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(vegan)
+
+```
+
+```{r}
+
+# data import
+nmds_dfs <- readRDS("../intermediates/nmds_data_frames_by_habitat.rds")
+
+nmds_mats <- readRDS("../intermediates/nmds_matrices_by_habitat.rds")
+
+nmds_scores <- readRDS("../intermediates/nmds_scores_by_habitat.rds")
+
+# pooled version
+pool_df <- readRDS("../intermediates/habitat_pooled_nmds_df.rds")
+
+pool_mat <- readRDS("../intermediates/habitat_pooled_nmds_matrix.rds")
+
+pool_scores <- readRDS("../intermediates/habitat_pooled_nmds_scores.rds")
+
+```
+
+
+```{r}
+
+terr_perm <- adonis(nmds_mats[["Terrestrial"]] ~ nmds_scores[["Terrestrial"]]$trophic, permutations = 9999, method = "bray")
+
+stream_perm <- adonis(nmds_mats[["Riverine"]] ~ nmds_scores[["Riverine"]]$trophic, permutations = 9999, method = "bray")
+
+marine_perm <- adonis(nmds_mats[["Marine"]] ~ nmds_scores[["Marine"]]$trophic, permutations = 9999, method = "bray")
+
+
+```
+
+```{r}
+saveRDS(terr_perm, "../outputs/permanova_terrestrial_results.rds")
+saveRDS(stream_perm, "../outputs/permanova_stream_results.rds")
+saveRDS(marine_perm, "../outputs/permanova_marine_results.rds")
+
+```
+
+
+Habitats Pooled
+
+```{r}
+pool_perm <- adonis(pool_mat ~ pool_scores$habitat * pool_scores$trophic, permutations = 9999, method = "bray")
+
+saveRDS(pool_perm, "../outputs/permanova_habitats_pooled_results.rds")
+
+```
+
+
+### Beta Dispersion
+
+```{r}
+# within habitat
+
+dist <- list()
+
+dist <- lapply(nmds_mats, vegdist)
+names(dist) <- names(nmds_mats)
+
+
+habitats <- names(nmds_dfs)
+
+bd_troph <- list()
+
+for (a_hab in habitats) {
+  
+  beta_troph <- betadisper(dist[[a_hab]], nmds_dfs[[a_hab]]$guild)
+  bd_troph[[a_hab]] <- beta_troph
+  
+}
+
+bd_troph_results <- lapply(bd_troph, anova)
+
+saveRDS(bd_troph_results, "../outputs/beta_dispersion_anova_by_trophic.rds")
+
+# with habitats pooled
+big_dist <- vegdist(pool_mat)
+
+pool_hab_trophic_betadisp <- betadisper(big_dist, pool_df$guild)
+pool_hab_habitat_betadisp <- betadisper(big_dist, pool_df$habitat)
+
+ph_trophic_anova <- anova(pool_hab_trophic_betadisp)
+ph_habitat_anova <- anova(pool_hab_habitat_betadisp)
+
+saveRDS(ph_trophic_anova, "../outputs/beta_dispersion_anova_hab_pools_by_trophic.rds")
+saveRDS(ph_habitat_anova, "../outputs/beta_dispersion_anova_hab_pools_by_habitat.rds")
+
+
+```
+
+
+
+
+
+
+
+
+
+

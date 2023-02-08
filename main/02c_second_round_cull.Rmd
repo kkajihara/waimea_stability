@@ -1,0 +1,127 @@
+---
+title: "02c_second_round_cull"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#load data - tables culled using Laura's method
+fung_asv_table <- readRDS("../intermediates/culled_asv_table_aerosols_and_fung_corp_removed.rds") # 49749 ASVs, 1443 samples
+fung_meta <- readRDS("../intermediates/culled_metadata_no_aerosols_fung_corp.rds")
+
+bact_asv_table <- readRDS("../intermediates/culled_bact_asv_table_aerosols_and_fung_corp_removed.rds") # 324718 ASVs, 1464 samples
+bact_meta <- readRDS("../intermediates/culled_bact_metadata_aerosols_and_fung_corp_removed.rds")
+```
+
+```{r}
+# not needed? because not culling at the plot level?
+site_subset <- function(asv_table, meta_table) {
+  sites <- unique(meta_table$site_name)
+  
+  site_list <- list()
+  
+  for (a_site in sites) {
+    sub_met <- meta_table[which(meta_table$site_name==a_site),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    site_list[[a_site]] <- sub_abun
+  }
+  
+  return(site_list)
+}
+
+fung_asvs_by_site <- site_subset(fung_asv_table, fung_meta)
+
+#4, 5
+
+make_emp_list <- function(site, site_list, meta_table, asv_table) {
+  
+  dat <- site_list[[site]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$sequencing_id %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- rowSums(sub_abun)
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+sites <- names(asvs_by_site)
+
+emp_asv_sums <- lapply(sites,
+                make_emp_list,
+                asvs_by_site,
+                meta_sub,
+                abun_sub)
+
+names(emp_asv_sums) <- names(asvs_by_site)
+
+```
+
+```{r}
+# remove ASVs that are only in one sample
+fung_asv_sums <- data.frame(rowSums(fung_asv_table))
+fung_asv_sums$sample_freq <- apply(fung_asv_table, 1, function(c)sum(c!=0))
+names(fung_asv_sums) <- c("asv_abundance", "sample_freq")
+
+fung_asv_sums <- arrange(fung_asv_sums, desc(sample_freq))
+
+fung_asvs_no_singlesamps <- fung_asv_sums[fung_asv_sums$sample_freq>1,]
+
+fung_abun_no_singles <- fung_asv_table[rownames(fung_asv_table) %in% rownames(fung_asvs_no_singlesamps),] # 26308 ASVs remain (23441 removed)
+fung_abun_no_singles <- fung_abun_no_singles[,colSums(fung_abun_no_singles)>0] # only one sample removed, 1442 remain
+fung_met_no_singles <- fung_meta[as.character(fung_meta$sequencing_id) %in% names(fung_abun_no_singles),]
+
+
+bact_asv_sums <- data.frame(rowSums(bact_asv_table))
+bact_asv_sums$sample_freq <- apply(bact_asv_table, 1, function(c)sum(c!=0))
+names(bact_asv_sums) <- c("asv_abundance", "sample_freq")
+
+bact_asv_sums <- arrange(bact_asv_sums, desc(sample_freq))
+
+bact_asvs_no_singlesamps <- bact_asv_sums[bact_asv_sums$sample_freq>1,] 
+
+bact_abun_no_singles <- bact_asv_table[rownames(bact_asv_table) %in% rownames(bact_asvs_no_singlesamps),] # 159368 ASVs remain, (165350 removed)
+bact_abun_no_singles <- bact_abun_no_singles[,colSums(bact_abun_no_singles)>0] # no samples removed, 1464 remain
+
+```
+
+```{r}
+saveRDS(fung_abun_no_singles, "../intermediates/no_singlesampASVs_fung_asv_table.rds")
+saveRDS(fung_met_no_singles, "../intermediates/no_singlesampASVs_fung_metadata.rds")
+saveRDS(bact_abun_no_singles, "../intermediates/no_singlesampASVs_bact_asv_table.rds")
+```
+
+```{r}
+test <- apply(fung_asv_table2, 2, function(c)sum(c==0))
+test <- as.data.frame(test)
+test$pct <- test$test / nrow(fung_asv_table2)
+test <- arrange(test, pct) # at the lowest end, our ASVs are 91% zeros
+
+```
+
+
+
+
+
+
+
+
+
+
+

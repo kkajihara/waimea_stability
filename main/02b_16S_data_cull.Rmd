@@ -1,0 +1,237 @@
+---
+title: "2b_16S_data_cull"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+```
+
+```{r}
+## from Sean's github: soswift/microbial_mapping/main/MM_5_Rarefaction.R 
+
+# Read in raw otu table and sample data
+otu_file         <- "../16s_data/cleaned/raw_mm_16s_hiseqsabundance_table.csv"
+sample_data_file <- "../16s_data/cleaned/mm_16s_hiseqs_metadata_table.csv"
+
+sample_dat     <- fread(sample_data_file)
+
+otu_table_raw  <- fread(otu_file)
+
+# Make clean numeric abundance data.frame with samples as columns and ASVs as rows
+sample_ids <- otu_table_raw$Group
+otu_table_raw[ , Group := NULL]
+otu_mat <- t(setDF(otu_table_raw, rownames = sample_ids))
+
+abun <- as.data.frame(otu_mat)
+
+sample_dat <- sample_dat[habitat %in% c("Marine","Terrestrial","Riverine")]
+abun <- abun[colnames(abun) %in% sample_dat$sequencing_id]
+abun <- abun[rowSums(abun)>0,]
+
+# Sean's culling: Drop controls and samples with less than 10000 reads
+# sample_dat <- sample_dat[habitat %in% c("Marine","Terrestrial","Riverine")]
+# otu_mat[colnames(otu_mat) %in% sample_dat$sequencing_id]
+# otu_mat <- otu_mat[ , colSums(otu_mat) > 10000]
+# 
+# saveRDS(otu_mat, "../16s_data/cleaned_16s_asv_matrix.rds")
+# saveRDS(sample_dat, "../16s_data/cleaned_16s_metadata.rds")
+```
+
+
+# Implementing Laura's culling for 16S
+
+### By ASVs
+
+Laura's guidance was for removing samples with low reads. To start, I will follow these steps for looking at ASVs.
+
+```{r, echo=FALSE}
+sampsums <- colSums(abun)
+asvsums <- rowSums(abun)
+```
+
+
+First, she looks at the summary of sequencing depths:
+
+```{r, echo=FALSE}
+# summary of sequencing depths
+summary(asvsums)
+
+```
+
+
+Then, checking how many ASVs have no reads and what the minimum non-zero sequencing depth is:
+
+```{r, echo=FALSE}
+
+# check how many samples have no reads and what the minimum non-zero sequencing depth is
+paste("Number of ASVs with no reads:",sum(asvsums==0))
+paste("Minimum non-zero sequencing depth:",sort(asvsums)[sum(asvsums==0)+1])
+
+```
+
+As well as whether the maximum may be an outlier:
+```{r, echo=FALSE}
+# is the maximum an outlier?
+tail(sort(asvsums),5)
+```
+
+
+She said in her email that for rare ASVs, she usually only excludes those seen in only one sample (unless building a network). The other common option would be something "very low like 10 reads." Here we can look at how many ASVs we would exclude at either of those cutoffs.
+
+Plot version:
+
+```{r, echo=FALSE}
+plot(sort(log1p(asvsums)), pch=19, xlab="Number of ASVs", ylab="Log of Reads", main="ASVs by read abundance with cutoffs set at 1 and 10 reads")
+abline(h=log1p(1), lty=2, col="blue")
+abline(h=log1p(10), lty=2, col="magenta")
+```
+
+
+If we cull ASVs with fewer than 10 reads:
+```{r, echo=FALSE}
+# hypothetical cutoff at 10 reads
+paste("We would remove this many ASVs:",sum(asvsums<10))
+paste0("Which is ", round((sum(asvsums<10)/length(asvsums))*100,2), "% of ASVs")
+```
+
+If we cull everything with 1 read:
+```{r, echo=FALSE}
+# hypothetical cutoff at 1 reads
+paste("We would remove this many ASVs:", sum(asvsums<2))
+paste0("Which is ", round((sum(asvsums<2)/length(asvsums))*100,2), "% of ASVs")
+```
+
+
+### By Samples
+
+Summary of sequencing depths by sample:
+
+```{r, echo=FALSE}
+# summary of sequencing depths
+summary(sampsums)
+```
+
+
+How many samples have no reads and what the minimum non-zero sequencing depth is:
+
+```{r, echo=FALSE}
+# check how many samples have no reads and what the minimum non-zero sequencing depth is
+paste("Number of Samples with no reads:",sum(sampsums==0))
+paste("Minimum non-zero sequencing depth:",sort(sampsums)[sum(sampsums==0)+1])
+
+```
+
+Checking the maximum:
+```{r, echo=FALSE}
+# is the maximum an outlier?
+tail(sort(sampsums),5)
+```
+
+If we only include samples that have more than 10% of the maximum, we would exclude this many:
+```{r within10, echo=FALSE}
+sum(sampsums<max(sampsums)/10)
+```
+
+Instead of using 10%, we can reduce that to the order of magnitude (number of zeros, so a 10,000 read cutoff). That would remove this many:
+```{r withinOrder, echo=FALSE}
+sum(sampsums<10000)
+```
+
+So let's assume the top 2 are outliers and work with the third highest sequencing depth. If we remove samples with less than 10% of this new maximum, we'd exclude this many:
+```{r within10_2, echo=FALSE}
+newmax <- tail(sort(sampsums))[3]
+sum(sampsums<newmax/10)
+```
+
+And if we reduce this to the order of magnitude, we get a cut off of 1,000 reads, which is not uncommon. In this case we would remove this many samples:
+```{r withinOrder_2, echo=FALSE}
+sum(sampsums<1000)
+```
+
+Let's check a middle ground, just for fun. If we use a cut off of 5,000 reads, let's see what happens.
+```{r under5000, echo=FALSE}
+paste("We would remove this many samples:",sum(sampsums<5000))
+paste0("Which is ", round((sum(sampsums<5000)/length(sampsums))*100,2), "% of samples")
+```
+
+Plot version:
+Here we have cutoff lines at 1000 reads in pink, 100 reads in blue, and 10 reads in dark green.
+```{r plots, echo=FALSE}
+plot(sort(log1p(sampsums)), pch=19, xlab="Number of Samples", ylab="Log of Reads", main="Samples by read abundance with cutoffs set at 1000, 100, and 10 reads")
+abline(h=log1p(100), lty=2, col="blue")
+abline(h=log1p(10000), lty=2, col="magenta")
+abline(h=log1p(10), lty=2, col="darkgreen")
+```
+
+
+
+If we cull samples with 10000 or fewer reads:
+```{r, echo=FALSE}
+# hypothetical cutoff at 1000 reads
+paste("We would remove this many Samples:",sum(sampsums<6000))
+paste0("Which is ", round((sum(sampsums<8000)/length(sampsums))*100,2), "% of Samples")
+```
+
+If we cull samples with 100 or fewer reads:
+```{r, echo=FALSE}
+# hypothetical cutoff at 100 reads
+paste("We would remove this many Samples:",sum(sampsums<100))
+paste0("Which is ", round((sum(sampsums<100)/length(sampsums))*100,2), "% of Samples")
+```
+
+If we cull samples with 10 or fewer reads:
+```{r, echo=FALSE}
+# hypothetical cutoff at 10 reads
+paste("We would remove this many Samples:",sum(sampsums<10))
+paste0("Which is ", round((sum(sampsums<10)/length(sampsums))*100,2), "% of Samples")
+
+```
+
+
+
+```{r cull, echo=FALSE, message=FALSE}
+
+# want to figure out where that natural break in the data is (somewhere around 100 reads per sample)
+# adjusting the plot from earlier, it seems to be around 6000 reads
+
+# so, want to cull the abundance file (and then reduce the metadata and tax files by samples or ASVs that are no longer there)
+
+# original 16S asv table dimensions: 328951 ASVs, 1562 samples
+
+culled_abun <- abun[,colSums(abun)>=6000] # 66 samples removed, 1496 remain
+# remove ASVs with only one read
+culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 251 ASVs removed, 328700 remain
+
+#remove aerosols and fungus corpus (empo3 categories)
+sample_dat <- sample_dat[which(!(sample_dat$empo_3 %in% c("Aerosol (non-saline)", "Fungus corpus"))),]
+
+culled_abun <- culled_abun[,colnames(culled_abun) %in% sample_dat$sequencing_id] # 1464 samples remain
+culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 324718 ASVs remain
+
+saveRDS(culled_abun, "../intermediates/culled_bact_asv_table_aerosols_and_fung_corp_removed.rds")
+
+
+# cull tax table
+# culled_tax <- tax[rownames(tax) %in% rownames(culled_abun),]
+# 
+# saveRDS(culled_tax, "../intermediates/culled_tax_table.rds")
+
+# cull metadata
+culled_meta <- sample_dat[sample_dat$sequencing_id %in% names(culled_abun),]
+
+
+saveRDS(culled_meta, "../intermediates/culled_bact_metadata_aerosols_and_fung_corp_removed.rds")
+
+
+```
+
+
+
+
+
+
