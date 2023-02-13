@@ -1,0 +1,310 @@
+---
+title: "15_prevalence_filter"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+#data load
+fung_asv_table <- readRDS("../intermediates/no_singlesampASVs_fung_asv_table.rds")
+fung_meta <- readRDS("../intermediates/no_singlesampASVs_fung_metadata.rds")
+
+bact_asv_table <- readRDS("../intermediates/no_singlesampASVs_bact_asv_table.rds")
+bact_meta <- readRDS("../intermediates/culled_bact_metadata_aerosols_and_fung_corp_removed.rds")
+
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+fung_meta$x_seq_ids <- paste0("X", fung_meta$sequencing_id)
+bact_meta$x_seq_ids <- paste0("X", bact_meta$sequencing_id)
+```
+
+Goal: Apply 20% prevalence filter. ASVs must be present in at least 20% of samples to remain.
+
+For the universal network, 20% prevalence across EMPOs within a habitat.
+For terrestrial plot networks, 20% prevalence within plot.
+
+```{r}
+fung_hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = fung_meta[which(fung_meta$habitat==a_hab),] 
+  fung_hab_samps[[a_hab]] = x$sequencing_id
+}
+
+fung_hab_samps <- lapply(fung_hab_samps, as.character)
+
+fung_hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = fung_asv_table[,which(colnames(fung_asv_table) %in% fung_hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  fung_hab_abuns[[a_hab]] <- y
+}
+
+names(fung_hab_abuns) <- habs
+
+
+prev_calc_df <- function(habitat, list_of_asv_tables) {
+  dat <- list_of_asv_tables[[habitat]]
+  
+  asv_sums <- data.frame(rowSums(dat))
+  asv_sums$sample_freq <- apply(dat, 1, function(c)sum(c!=0))
+  names(asv_sums) <- c("asv_abundance", "sample_freq")
+  
+  asv_sums$tot_samps <- ncol(dat)
+  asv_sums$prev <- asv_sums$sample_freq/ncol(dat)
+    
+  asv_sums <- arrange(asv_sums, desc(sample_freq))
+  asv_sums <- asv_sums[which(asv_sums$prev>0.2),]
+
+  return(asv_sums)
+}
+
+
+fung_prev_by_hab <- lapply(habs,
+                           prev_calc_df,
+                           list_of_asv_tables <- fung_hab_abuns)
+
+fung_habprev_asv_names <- unique(c(rownames(fung_prev_by_hab[[1]]), 
+                                   rownames(fung_prev_by_hab[[2]]), 
+                                   rownames(fung_prev_by_hab[[3]]))) # 281 ASVs
+
+```
+
+
+
+```{r}
+habs <- c("Terrestrial","Riverine", "Marine")
+
+hab_subset <- function(asv_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+fung_asvs_by_hab <- hab_subset(fung_asv_table, fung_meta)
+
+
+
+make_emp_hab_list <- function(hab, hab_list, meta_table, asv_table) {
+  
+  dat <- hab_list[[hab]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(asv_sums) <- c("asv_abundance", "sample_freq")
+    asv_sums$tot_samps <- ncol(sub_abun)
+    asv_sums$prev <- asv_sums$sample_freq/ncol(sub_abun)
+    
+    asv_sums <- arrange(asv_sums, desc(sample_freq))
+    
+    asv_sums <- asv_sums[asv_sums$prev>0.2,]
+    
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(fung_asvs_by_site)
+
+fung_emp_asv_sums_by_hab <- lapply(habs,
+                            make_emp_hab_list,
+                            fung_asvs_by_hab,
+                            fung_meta,
+                            fung_asv_table)
+
+names(fung_emp_asv_sums_by_hab) <- names(fung_asvs_by_hab)
+
+
+all_things_listed <- lapply(fung_emp_asv_sums_by_hab, function(x) lapply(x, rownames))
+flattened_ish <- lapply(all_things_listed, function(x) Reduce(c, x))
+
+all_things <- unlist(flattened_ish)
+
+all_things_unique <- unique(all_things)
+
+
+fung_abun_prevfilter_on_empo <- fung_asv_table[rownames(fung_asv_table) %in% all_things_unique,]
+fung_abun_prevfilter_on_empo <- fung_abun_prevfilter_on_empo[,colSums(fung_abun_prevfilter_on_empo)>0] #1954 ASVs, 1433 samples (original was 26308 ASVs, 1442 samples)
+
+saveRDS(fung_abun_prevfilter_on_empo, "../networks/input_data/fung_abun_prev_over20_across_empo.rds")
+
+```
+
+## Bacteria
+
+```{r}
+bact_hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = bact_meta[which(bact_meta$habitat==a_hab),] 
+  bact_hab_samps[[a_hab]] = x$sequencing_id
+}
+
+bact_hab_samps <- lapply(bact_hab_samps, as.character)
+
+bact_hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = bact_asv_table[,which(colnames(bact_asv_table) %in% bact_hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  bact_hab_abuns[[a_hab]] <- y
+}
+
+names(bact_hab_abuns) <- habs
+
+
+prev_calc_df <- function(habitat, list_of_asv_tables) {
+  dat <- list_of_asv_tables[[habitat]]
+  
+  asv_sums <- data.frame(rowSums(dat))
+  asv_sums$sample_freq <- apply(dat, 1, function(c)sum(c!=0))
+  names(asv_sums) <- c("asv_abundance", "sample_freq")
+  
+  asv_sums$tot_samps <- ncol(dat)
+  asv_sums$prev <- asv_sums$sample_freq/ncol(dat)
+    
+  asv_sums <- arrange(asv_sums, desc(sample_freq))
+  asv_sums <- asv_sums[which(asv_sums$prev>0.2),]
+
+  return(asv_sums)
+}
+
+
+bact_prev_by_hab <- lapply(habs,
+                           prev_calc_df,
+                           list_of_asv_tables <- bact_hab_abuns)
+
+bact_habprev_asv_names <- unique(c(rownames(bact_prev_by_hab[[1]]), 
+                                   rownames(bact_prev_by_hab[[2]]), 
+                                   rownames(bact_prev_by_hab[[3]]))) # 1499 ASVs
+
+```
+
+
+
+```{r}
+hab_subset <- function(asv_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+bact_asvs_by_hab <- hab_subset(bact_asv_table, bact_meta)
+
+
+
+make_emp_hab_list <- function(hab, hab_list, meta_table, asv_table) {
+  
+  dat <- hab_list[[hab]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(asv_sums) <- c("asv_abundance", "sample_freq")
+    asv_sums$tot_samps <- ncol(sub_abun)
+    asv_sums$prev <- asv_sums$sample_freq/ncol(sub_abun)
+    
+    asv_sums <- arrange(asv_sums, desc(sample_freq))
+    
+    asv_sums <- asv_sums[asv_sums$prev>0.2,]
+    
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(bact_asvs_by_site)
+
+bact_emp_asv_sums_by_hab <- lapply(habs,
+                            make_emp_hab_list,
+                            bact_asvs_by_hab,
+                            bact_meta,
+                            bact_asv_table)
+
+names(bact_emp_asv_sums_by_hab) <- names(bact_asvs_by_hab)
+
+
+all_things_listed <- lapply(bact_emp_asv_sums_by_hab, function(x) lapply(x, rownames))
+flattened_ish <- lapply(all_things_listed, function(x) Reduce(c, x))
+
+all_things <- unlist(flattened_ish)
+
+all_things_unique <- unique(all_things)
+
+
+bact_abun_prevfilter_on_empo <- bact_asv_table[rownames(bact_asv_table) %in% all_things_unique,]
+bact_abun_prevfilter_on_empo <- bact_abun_prevfilter_on_empo[,colSums(bact_abun_prevfilter_on_empo)>0] #14268 ASVs, 1464 samples (original was 159368 ASVs, 1464 samples)
+
+saveRDS(bact_abun_prevfilter_on_empo, "../networks/input_data/bact_abun_prev_over20_across_empo.rds")
+
+```
