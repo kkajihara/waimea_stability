@@ -1,0 +1,166 @@
+---
+title: "16_rarefy"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(vegan)
+```
+
+```{r}
+#data load
+fung_asv_table <- readRDS("../networks/input_data/fung_abun_prev_over20_across_empo.rds")
+fung_meta <- readRDS("../intermediates/no_singlesampASVs_fung_metadata.rds")
+fung_meta <- fung_meta[fung_meta$sequencing_id %in% names(fung_asv_table),]
+
+bact_asv_table <- readRDS("../intermediates/no_singlesampASVs_bact_asv_table.rds")
+bact_meta <- readRDS("../intermediates/no_singlesampASVs_bact_metadata.rds")
+
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+fung_meta$x_seq_ids <- paste0("X", fung_meta$sequencing_id)
+bact_meta$x_seq_ids <- paste0("X", bact_meta$sequencing_id)
+```
+
+Goal: calculate means and distributions for read counts by EMPO3 category.
+How many samples would be lost if we rarefy to the mean and dump all samples not meeting some given threshold?
+
+Want ASV tables by EMPO3 (across habitat?)
+
+```{r}
+fung_hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = fung_meta[which(fung_meta$habitat==a_hab),] 
+  fung_hab_samps[[a_hab]] = x$sequencing_id
+}
+
+fung_hab_samps <- lapply(fung_hab_samps, as.character)
+
+fung_hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = fung_asv_table[,which(colnames(fung_asv_table) %in% fung_hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  fung_hab_abuns[[a_hab]] <- y
+}
+
+names(fung_hab_abuns) <- habs
+```
+
+```{r}
+habs <- c("Terrestrial","Riverine", "Marine")
+
+hab_subset <- function(asv_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+fung_asvs_by_hab <- hab_subset(fung_asv_table, fung_meta)
+
+
+
+make_emp_list <- function(meta_table, asv_table) {
+  
+  #dat <- hab_list[[hab]]
+  #samples <- names(asv_table)
+  
+  #sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(meta_table$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- meta_table[which(meta_table$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(asv_sums) <- c("asv_abundance", "sample_freq")
+    asv_sums$tot_samps <- ncol(sub_abun)
+    
+    asv_sums <- arrange(asv_sums, desc(asv_abundance))
+    
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(fung_asvs_by_site)
+
+fung_emp_asv_sums <- make_emp_list(meta_table = fung_meta, asv_table = fung_asv_table)
+
+```
+
+```{r}
+# test out how much lost
+
+df <- lapply(fung_emp_asv_sums, function(x) summary(x$asv_abundance))
+
+read_dists = as.data.frame(do.call(rbind, df))
+
+m = mean(read_dists$Mean)
+
+new_list = lapply(fung_emp_asv_sums, function(x) x[x$asv_abundance>m,])
+
+
+old_asvnums <- unlist(lapply(fung_emp_asv_sums, function(x) dim(x)[1]))
+new_asvnums <- unlist(lapply(new_list, function(x) dim(x)[1]))
+
+
+loss_df <- data.frame(old_asvnums,new_asvnums)
+loss_df$pct_loss <- (loss_df$old_asvnums - loss_df$new_asvnums)/loss_df$old_asvnums
+
+filtered_asv_list <- lapply(new_list, function(x) rownames(x))
+filt_asvs_all <- unlist(filtered_asv_list)
+
+filt_asvs <- unique(filt_asvs_all)
+
+test_abun <- fung_asv_table[rownames(fung_asv_table) %in% filt_asvs,]
+test_abun <- test_abun[,colSums(test_abun)>0] # 968 ASVs, 1433 samples
+
+test_rare <- rrarefy(t(test_abun), m)
+tr_df <- as.data.frame(test_rare)
+
+tr_df <- tr_df[rowSums(tr_df)==5528,]
+tr_df <- as.data.frame(t(tr_df))
+
+
+saveRDS(tr_df, "../networks/input_data/prev20_and_mean_rarefied_fung_data.rds")
+
+```
+
+
+
+
+
+
+
+
