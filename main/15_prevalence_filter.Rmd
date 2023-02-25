@@ -164,7 +164,7 @@ all_things_unique <- unique(all_things)
 
 
 fung_abun_prevfilter_on_empo <- fung_asv_table[rownames(fung_asv_table) %in% all_things_unique,]
-fung_abun_prevfilter_on_empo <- fung_abun_prevfilter_on_empo[,colSums(fung_abun_prevfilter_on_empo)>0] #1954 ASVs, 1433 samples (original was 26308 ASVs, 1442 samples)
+fung_abun_prevfilter_on_empo <- fung_abun_prevfilter_on_empo[,colSums(fung_abun_prevfilter_on_empo)>0] #1954 ASVs, 1433 samples (original was 26254 ASVs, 1442 samples)
 
 saveRDS(fung_abun_prevfilter_on_empo, "../networks/input_data/fung_abun_prev_over20_across_empo.rds")
 
@@ -219,7 +219,7 @@ bact_prev_by_hab <- lapply(habs,
 
 bact_habprev_asv_names <- unique(c(rownames(bact_prev_by_hab[[1]]), 
                                    rownames(bact_prev_by_hab[[2]]), 
-                                   rownames(bact_prev_by_hab[[3]]))) # 1499 ASVs
+                                   rownames(bact_prev_by_hab[[3]]))) # 1484 ASVs
 
 ```
 
@@ -303,7 +303,7 @@ all_things_unique <- unique(all_things)
 
 
 bact_abun_prevfilter_on_empo <- bact_asv_table[rownames(bact_asv_table) %in% all_things_unique,]
-bact_abun_prevfilter_on_empo <- bact_abun_prevfilter_on_empo[,colSums(bact_abun_prevfilter_on_empo)>0] #14268 ASVs, 1464 samples (original was 159368 ASVs, 1464 samples)
+bact_abun_prevfilter_on_empo <- bact_abun_prevfilter_on_empo[,colSums(bact_abun_prevfilter_on_empo)>0] #14262 ASVs, 1473 samples (original was 159112 ASVs, 1473 samples)
 
 saveRDS(bact_abun_prevfilter_on_empo, "../networks/input_data/bact_abun_prev_over20_across_empo.rds")
 

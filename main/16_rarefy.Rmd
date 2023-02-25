@@ -17,7 +17,7 @@ fung_asv_table <- readRDS("../networks/input_data/fung_abun_prev_over20_across_e
 fung_meta <- readRDS("../intermediates/no_singlesampASVs_fung_metadata.rds")
 fung_meta <- fung_meta[fung_meta$sequencing_id %in% names(fung_asv_table),]
 
-bact_asv_table <- readRDS("../intermediates/no_singlesampASVs_bact_asv_table.rds")
+bact_asv_table <- readRDS("../networks/input_data/bact_abun_prev_over20_across_empo.rds")
 bact_meta <- readRDS("../intermediates/no_singlesampASVs_bact_metadata.rds")
 
 
@@ -33,6 +33,7 @@ How many samples would be lost if we rarefy to the mean and dump all samples not
 Want ASV tables by EMPO3 (across habitat?)
 
 ```{r}
+
 fung_hab_samps <- list()
 habs <- c("Terrestrial", "Riverine", "Marine")
 
@@ -54,10 +55,172 @@ for (a_hab in habs) {
 }
 
 names(fung_hab_abuns) <- habs
+
 ```
 
 ```{r}
 habs <- c("Terrestrial","Riverine", "Marine")
+
+# hab_subset <- function(asv_table, meta_table) {
+#   habs <- unique(meta_table$habitat)
+#   
+#   hab_list <- list()
+#   
+#   for (a_hab in habs) {
+#     sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+#     
+#     sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+#     sub_hab_abun <- data.frame(sub_hab_abun)
+#     sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+#     sub_hab_abun <- data.frame(sub_hab_abun)
+#     
+#     hab_list[[a_hab]] <- sub_hab_abun
+#     
+#   }
+#   
+#   return(hab_list)
+# }
+# 
+# fung_asvs_by_hab <- hab_subset(fung_asv_table, fung_meta)
+
+
+
+make_emp_list <- function(meta_table, asv_table) {
+  
+  #dat <- hab_list[[hab]]
+  #samples <- names(asv_table)
+  
+  #sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(meta_table$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- meta_table[which(meta_table$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    samp_sums <- data.frame(colSums(sub_abun))
+    #asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(samp_sums) <-"samp_abundance"
+    samp_sums$tot_samps <- ncol(sub_abun)
+    
+    #samp_sums <- arrange(asv_sums, desc(asv_abundance))
+    
+    emp_list[[e]] <- samp_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(fung_asvs_by_site)
+
+#fung_emp_asv_sums <- make_emp_list(meta_table = fung_meta, asv_table = fung_asv_table)
+
+fung_emp_samp_sums <- make_emp_list(meta_table = fung_meta, asv_table = fung_asv_table)
+```
+
+```{r}
+# test out how much lost
+
+df <- lapply(fung_emp_samp_sums, function(x) summary(x$samp_abundance))
+
+read_dists = as.data.frame(do.call(rbind, df))
+saveRDS(read_dists, "../intermediates/fung_read_distributions_by_empo3.rds")
+
+m = mean(read_dists$Mean)
+
+new_list = lapply(fung_emp_samp_sums, function(x) x[x$samp_abundance>m,])
+
+old_sampnums <- unlist(lapply(fung_emp_samp_sums, function(x) dim(x)[1]))
+new_sampnums <- unlist(lapply(new_list, function(x) dim(x)[1]))
+
+loss_df <- data.frame(old_sampnums,new_sampnums)
+loss_df$pct_loss <- (loss_df$old_sampnums - loss_df$new_sampnums)/loss_df$old_sampnums
+# saveRDS(loss_df, "../intermediates/fung_samps_lost_grand_mean.rds") # var names duplicate below, I got lazy
+
+filtered_samp_list <- lapply(new_list, function(x) rownames(x))
+filt_samps_all <- unlist(filtered_samp_list)
+
+filt_samps <- unique(filt_samps_all)
+# remove X from string
+filt_samps <- sapply(filt_samps, function(x) substr(x, 2, nchar(x)))
+
+test_abun <- fung_asv_table[colnames(fung_asv_table) %in% filt_samps,]
+test_abun <- test_abun[,colSums(test_abun)>0] # 563 ASVs, 1382 samples
+
+test_rare <- rrarefy(t(test_abun), m)
+tr_df <- as.data.frame(test_rare)
+
+tr_df <- tr_df[rowSums(tr_df)==81731,] # 62 samples
+tr_df <- as.data.frame(t(tr_df))
+
+
+### try mean of 1st quartile bc samples went way down
+
+q = mean(read_dists$`1st Qu.`)
+
+new_list = lapply(fung_emp_samp_sums, function(x) x[x$samp_abundance>q,])
+
+old_sampnums <- unlist(lapply(fung_emp_samp_sums, function(x) dim(x)[1]))
+new_sampnums <- unlist(lapply(new_list, function(x) dim(x)[1]))
+
+loss_df <- data.frame(old_sampnums,new_sampnums)
+loss_df$pct_loss <- (loss_df$old_sampnums - loss_df$new_sampnums)/loss_df$old_sampnums
+saveRDS(loss_df, "../intermediates/fung_samps_lost_first_quart.rds")
+
+filtered_samp_list <- lapply(new_list, function(x) rownames(x))
+filt_samps_all <- unlist(filtered_samp_list)
+
+filt_samps <- unique(filt_samps_all)
+# remove X from string
+filt_samps <- sapply(filt_samps, function(x) substr(x, 2, nchar(x)))
+
+test_abun <- fung_asv_table[colnames(fung_asv_table) %in% filt_samps,]
+test_abun <- test_abun[,colSums(test_abun)>0] # 979 ASVs, 1414 samples
+
+test_rare <- rrarefy(t(test_abun), q)
+tr_df <- as.data.frame(test_rare)
+
+tr_df <- tr_df[rowSums(tr_df)==32893,] # 419 samples
+tr_df <- as.data.frame(t(tr_df))
+
+
+saveRDS(tr_df, "../networks/input_data/prev20_and_mean_rarefied_fung_data.rds")
+
+```
+
+
+### Bacteria
+
+```{r}
+bact_hab_samps <- list()
+habs <- c("Terrestrial", "Riverine", "Marine")
+
+for (a_hab in habs) {
+  x = bact_meta[which(bact_meta$habitat==a_hab),] 
+  bact_hab_samps[[a_hab]] = x$sequencing_id
+}
+
+bact_hab_samps <- lapply(bact_hab_samps, as.character)
+
+bact_hab_abuns <- list()
+
+for (a_hab in habs) {
+  y = bact_asv_table[,which(colnames(bact_asv_table) %in% bact_hab_samps[[a_hab]])]
+
+  y = y[rowSums(y)>0,]
+  
+  bact_hab_abuns[[a_hab]] <- y
+}
+
+
+```
+
+```{r}
+#habs <- c("Terrestrial","Riverine", "Marine")
 
 hab_subset <- function(asv_table, meta_table) {
   habs <- unique(meta_table$habitat)
@@ -79,7 +242,7 @@ hab_subset <- function(asv_table, meta_table) {
   return(hab_list)
 }
 
-fung_asvs_by_hab <- hab_subset(fung_asv_table, fung_meta)
+bact_asvs_by_hab <- hab_subset(bact_asv_table, bact_meta)
 
 
 
@@ -100,14 +263,14 @@ make_emp_list <- function(meta_table, asv_table) {
     sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
     sub_abun <- data.frame(sub_abun)
     
-    asv_sums <- data.frame(rowSums(sub_abun))
-    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
-    names(asv_sums) <- c("asv_abundance", "sample_freq")
-    asv_sums$tot_samps <- ncol(sub_abun)
+    samp_sums <- data.frame(colSums(sub_abun))
+    #asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(samp_sums) <-"samp_abundance"
+    samp_sums$tot_samps <- ncol(sub_abun)
     
-    asv_sums <- arrange(asv_sums, desc(asv_abundance))
+    #samp_sums <- arrange(asv_sums, desc(asv_abundance))
     
-    emp_list[[e]] <- asv_sums
+    emp_list[[e]] <- samp_sums
   }
   
   return(emp_list)
@@ -115,50 +278,81 @@ make_emp_list <- function(meta_table, asv_table) {
 
 #sites <- names(fung_asvs_by_site)
 
-fung_emp_asv_sums <- make_emp_list(meta_table = fung_meta, asv_table = fung_asv_table)
+bact_emp_samp_sums <- make_emp_list(meta_table = bact_meta, asv_table = bact_asv_table)
 
 ```
 
 ```{r}
 # test out how much lost
 
-df <- lapply(fung_emp_asv_sums, function(x) summary(x$asv_abundance))
+bact_df <- lapply(bact_emp_samp_sums, function(x) summary(x$samp_abundance))
 
-read_dists = as.data.frame(do.call(rbind, df))
+bact_read_dists = as.data.frame(do.call(rbind, bact_df))
+saveRDS(bact_read_dists, "../intermediates/bact_read_distributions_by_empo3.rds")
 
-m = mean(read_dists$Mean)
+bact_m = mean(bact_read_dists$Mean)
 
-new_list = lapply(fung_emp_asv_sums, function(x) x[x$asv_abundance>m,])
+bact_new_list = lapply(bact_emp_samp_sums, function(x) x[x$samp_abundance>bact_m,])
+
+bact_old_sampnums <- unlist(lapply(bact_emp_samp_sums, function(x) dim(x)[1]))
+bact_new_sampnums <- unlist(lapply(bact_new_list, function(x) dim(x)[1]))
+
+bact_loss_df <- data.frame(bact_old_sampnums,bact_new_sampnums)
+bact_loss_df$pct_loss <- (bact_loss_df$bact_old_sampnums - bact_loss_df$bact_new_sampnums)/bact_loss_df$bact_old_sampnums
+saveRDS(bact_loss_df, "../intermediates/bact_samps_lost_grand_mean.rds")
+
+bact_filtered_samp_list <- lapply(bact_new_list, function(x) rownames(x))
+bact_filt_samps_all <- unlist(bact_filtered_samp_list)
+
+bact_filt_samps <- unique(bact_filt_samps_all)
+# remove X from string
+bact_filt_samps <- sapply(bact_filt_samps, function(x) substr(x, 2, nchar(x)))
+
+bact_test_abun <- bact_asv_table[colnames(bact_asv_table) %in% bact_filt_samps,]
+bact_test_abun <- bact_test_abun[,colSums(bact_test_abun)>0] # 3362 ASVs, 1470 samples
+
+bact_test_rare <- rrarefy(t(bact_test_abun),bact_m)
+bact_tr_df <- as.data.frame(bact_test_rare)
+
+# replace number with grand mean of read counts by EMPO3 (can't use bact_m variable as is bc not rounded)
+bact_tr_df <- bact_tr_df[rowSums(bact_tr_df)==73773,]
+bact_tr_df <- as.data.frame(t(bact_tr_df)) # 56 samples
 
 
-old_asvnums <- unlist(lapply(fung_emp_asv_sums, function(x) dim(x)[1]))
-new_asvnums <- unlist(lapply(new_list, function(x) dim(x)[1]))
+### do for first quartile - note var names have not been changed
+
+bact_q = mean(bact_read_dists$`1st Qu.`)
+
+bact_new_list = lapply(bact_emp_samp_sums, function(x) x[x$samp_abundance>bact_q,])
+
+bact_old_sampnums <- unlist(lapply(bact_emp_samp_sums, function(x) dim(x)[1]))
+bact_new_sampnums <- unlist(lapply(bact_new_list, function(x) dim(x)[1]))
+
+bact_loss_df <- data.frame(bact_old_sampnums,bact_new_sampnums)
+bact_loss_df$pct_loss <- (bact_loss_df$bact_old_sampnums - bact_loss_df$bact_new_sampnums)/bact_loss_df$bact_old_sampnums
+# saveRDS(bact_loss_df, "../intermediates/bact_samps_lost_first_quart.rds") note var name not changed
+
+bact_filtered_samp_list <- lapply(bact_new_list, function(x) rownames(x))
+bact_filt_samps_all <- unlist(bact_filtered_samp_list)
+
+bact_filt_samps <- unique(bact_filt_samps_all)
+# remove X from string
+bact_filt_samps <- sapply(bact_filt_samps, function(x) substr(x, 2, nchar(x)))
+
+bact_test_abun <- bact_asv_table[colnames(bact_asv_table) %in% bact_filt_samps,]
+bact_test_abun <- bact_test_abun[,colSums(bact_test_abun)>0] # 7684 ASVs, 1473 samples
+
+bact_test_rare <- rrarefy(t(bact_test_abun),bact_q)
+bact_tr_df <- as.data.frame(bact_test_rare)
+
+# replace number with grand mean of read counts by EMPO3 (can't use bact_m variable as is bc not rounded)
+bact_tr_df <- bact_tr_df[rowSums(bact_tr_df)==36222,]
+bact_tr_df <- as.data.frame(t(bact_tr_df)) # 459 samples
 
 
-loss_df <- data.frame(old_asvnums,new_asvnums)
-loss_df$pct_loss <- (loss_df$old_asvnums - loss_df$new_asvnums)/loss_df$old_asvnums
-
-filtered_asv_list <- lapply(new_list, function(x) rownames(x))
-filt_asvs_all <- unlist(filtered_asv_list)
-
-filt_asvs <- unique(filt_asvs_all)
-
-test_abun <- fung_asv_table[rownames(fung_asv_table) %in% filt_asvs,]
-test_abun <- test_abun[,colSums(test_abun)>0] # 968 ASVs, 1433 samples
-
-test_rare <- rrarefy(t(test_abun), m)
-tr_df <- as.data.frame(test_rare)
-
-tr_df <- tr_df[rowSums(tr_df)==5528,]
-tr_df <- as.data.frame(t(tr_df))
-
-
-saveRDS(tr_df, "../networks/input_data/prev20_and_mean_rarefied_fung_data.rds")
+saveRDS(bact_tr_df, "../networks/input_data/prev20_and_mean_rarefied_bact_data.rds")
 
 ```
-
-
-
 
 
 
