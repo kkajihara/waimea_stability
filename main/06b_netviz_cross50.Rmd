@@ -1,0 +1,76 @@
+---
+title: "13_network_visualization"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(igraph)
+library(SpiecEasi)
+```
+
+```{r}
+network <- readRDS("../networks/bact_prev_test/outputs/batch_crossdom_test_prev50.rds")
+
+#terr_entr_data <- readRDS("../networks/input_data/fung_entrance_terr_top1000_allempos_in_site_entrance.rds")
+
+#metadata <- readRDS("../intermediates/fungal_metadata_matched_up.rds")
+
+```
+
+```{r}
+#vsize    <- rowMeans(clr(pc_terr_entr_data, 1))+3
+
+#net_test     <- adj2igraph(getRefit(terr_entrance_network), vertex.attr=list(name=rownames(terr_entr_data)))
+
+net_test <- adj2igraph(getRefit(network))
+
+#g_data <-  get.data.frame(net_test,  what="vertices")$name
+
+#net_try <- graph_from_adjacency_matrix(terr_entrance_network[[100]])
+
+
+# network has no connections
+getOptInd(network)
+sum(getRefit(network))/2
+
+
+getStability(network)
+sum(getRefit(network))/2
+
+```
+
+```{r}
+library(GGally)
+library(ggpubr)
+
+#net_try_simplify <- simplify(net_try)
+
+a <- ggnet2(net_test, node.size = 1, color = "#c6cdf7") + labs(title = "Cross domain, 50% prevalence", subtitle = "Batch")
+
+ggsave("../figures/testnetwork_full_fung_prev20_rarefied.png", width = 7, height = 6)
+
+```
+
+
+```{r}
+separation_r <- NULL
+        g <- net_test
+        g <- subgraph(g,igraph::degree(g)>0)
+        apl <- average.path.length(g)
+        separation_r <- c(separation_r, apl)
+
+m = modularity(g,membership(cluster_fast_greedy(g)))
+
+```
+
+
+
+
+
+
+
+

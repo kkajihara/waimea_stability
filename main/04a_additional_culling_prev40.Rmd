@@ -1,0 +1,346 @@
+---
+title: "17_otu_clustering"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(DECIPHER)
+library(Biostrings)
+library(speedyseq)
+library(decontam)
+
+library(dplyr)
+library(tibble)
+```
+
+## Fungi
+
+```{r}
+
+fung_abun <- readRDS("../intermediates/fung_culled_abun_otu_lauras_method_post_matchup.rds") # 30596 otus, 1325 samples
+fung_meta <- readRDS("../intermediates/fung_culled_metadata_otu_lauras_method_post_matchup.rds")
+
+# remove otus that are only in one sample
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+# fung_meta$x_seq_ids <- paste0("X", fung_meta$sequencing_id)
+
+
+fung_otu_sums <- data.frame(rowSums(fung_abun))
+rownames(fung_otu_sums) <- rownames(fung_abun)
+fung_otu_sums$sample_freq <- apply(fung_abun, 1, function(c)sum(c!=0))
+names(fung_otu_sums) <- c("otu_abundance", "sample_freq")
+
+fung_otu_sums <- rownames_to_column(fung_otu_sums, "ID")
+fung_otu_sums <- arrange(fung_otu_sums, desc(sample_freq))
+fung_otu_sums <- column_to_rownames(fung_otu_sums, "ID")
+
+fung_otus_no_singlesamps <- fung_otu_sums[fung_otu_sums$sample_freq>1,]
+
+fung_abun_no_singles <- fung_abun[rownames(fung_abun) %in% rownames(fung_otus_no_singlesamps),] # 20306 otus remain 
+fung_abun_no_singles <- fung_abun_no_singles[,colSums(fung_abun_no_singles)>0] # 1324 samples
+fung_met_no_singles <- fung_meta[as.character(fung_meta$x_seq_id) %in% names(fung_abun_no_singles),]
+```
+
+
+```{r}
+new_fung_abun <- fung_abun_no_singles
+new_fung_meta <- fung_met_no_singles
+
+habs <- c("Terrestrial","Riverine", "Marine")
+new_fung_meta <- new_fung_meta[which(new_fung_meta$habitat %in% habs),]
+
+hab_subset <- function(asv_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$x_seq_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+fung_asvs_by_hab <- hab_subset(new_fung_abun, new_fung_meta)
+
+
+
+make_emp_hab_list <- function(hab, hab_list, meta_table, asv_table) {
+  
+  dat <- hab_list[[hab]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$x_seq_id %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$x_seq_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(asv_sums) <- c("asv_abundance", "sample_freq")
+    asv_sums$tot_samps <- ncol(sub_abun)
+    asv_sums$prev <- asv_sums$sample_freq/ncol(sub_abun)
+    
+    asv_sums <- rownames_to_column(asv_sums, "ID")
+    asv_sums <- arrange(asv_sums, desc(sample_freq))
+    asv_sums <- column_to_rownames(asv_sums, "ID")
+    
+    asv_sums <- asv_sums[asv_sums$prev>=0.4,]
+    
+    
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(fung_asvs_by_site)
+
+fung_emp_asv_sums_by_hab <- lapply(habs,
+                            make_emp_hab_list,
+                            fung_asvs_by_hab,
+                            new_fung_meta,
+                            new_fung_abun)
+
+names(fung_emp_asv_sums_by_hab) <- names(fung_asvs_by_hab)
+
+
+all_things_listed <- lapply(fung_emp_asv_sums_by_hab, function(x) lapply(x, rownames))
+flattened_ish <- lapply(all_things_listed, function(x) Reduce(c, x))
+
+all_things <- unlist(flattened_ish)
+
+all_things_unique <- unique(all_things)
+
+
+new_fung_abun_prevfilter_on_empo <- new_fung_abun[rownames(new_fung_abun) %in% all_things_unique,]
+new_fung_abun_prevfilter_on_empo <- new_fung_abun_prevfilter_on_empo[,colSums(new_fung_abun_prevfilter_on_empo)>0] # 528 OTUs, 1307 samples at 40% prevalence
+
+
+saveRDS(new_fung_abun_prevfilter_on_empo, "../networks/input_data/fung_prev40_otus_matched_up.rds")
+
+filt_fung_meta <- new_fung_meta[new_fung_meta$x_seq_id %in% names(new_fung_abun_prevfilter_on_empo),]
+
+```
+
+
+## Bacteria
+
+
+```{r}
+
+bact_abun <- readRDS("../intermediates/bact_culled_abun_otu_lauras_method_post_matchup.rds") # 90240 OTUs, 1313 samples
+bact_meta <- readRDS("../intermediates/bact_culled_meta_otu_lauras_method_post_matchup.rds")
+
+# sample names in abundance table eventually get "X" appended due to the colnames being numeric
+# make a new column with these names
+bact_meta$x_seq_ids <- paste0("X", bact_meta$sequencing_id)
+
+
+bact_otu_sums <- data.frame(rowSums(bact_abun))
+bact_otu_sums$sample_freq <- apply(bact_abun, 1, function(c)sum(c!=0))
+names(bact_otu_sums) <- c("otu_abundance", "sample_freq")
+
+bact_otu_sums <- rownames_to_column(bact_otu_sums, "ID")
+bact_otu_sums <- arrange(bact_otu_sums, desc(sample_freq))
+bact_otu_sums <- column_to_rownames(bact_otu_sums, "ID")
+
+bact_otus_no_singlesamps <- bact_otu_sums[bact_otu_sums$sample_freq>1,]
+
+bact_abun_no_singles <- bact_abun[rownames(bact_abun) %in% rownames(bact_otus_no_singlesamps),] # 63847 otus remain 
+bact_abun_no_singles <- bact_abun_no_singles[,colSums(bact_abun_no_singles)>0] # 1313 samples
+bact_met_no_singles <- bact_meta[as.character(bact_meta$sequencing_id) %in% names(bact_abun_no_singles),]
+```
+
+
+```{r}
+new_bact_abun <- bact_abun_no_singles
+new_bact_meta <- bact_met_no_singles
+
+
+hab_subset <- function(asv_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- asv_table[,which(names(asv_table) %in% sub_met$sequencing_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+bact_asvs_by_hab <- hab_subset(new_bact_abun, new_bact_meta)
+
+
+
+make_emp_hab_list <- function(hab, hab_list, meta_table, asv_table) {
+  
+  dat <- hab_list[[hab]]
+  samples <- names(dat)
+  
+  sub_met <- meta_table[which(meta_table$x_seq_ids %in% samples),]
+  
+  empo3 <- unique(sub_met$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_sub_met <- sub_met[which(sub_met$empo_3==e),]
+    sub_abun <- asv_table[,which(names(asv_table) %in% sub_sub_met$sequencing_id)]
+    sub_abun <- data.frame(sub_abun)
+    sub_abun <- sub_abun[which(rowSums(sub_abun) > 0),]
+    sub_abun <- data.frame(sub_abun)
+    
+    asv_sums <- data.frame(rowSums(sub_abun))
+    asv_sums$sample_freq <- apply(sub_abun, 1, function(c)sum(c!=0))
+    names(asv_sums) <- c("asv_abundance", "sample_freq")
+    asv_sums$tot_samps <- ncol(sub_abun)
+    asv_sums$prev <- asv_sums$sample_freq/ncol(sub_abun)
+    
+    asv_sums <- rownames_to_column(asv_sums, "ID")
+    asv_sums <- arrange(asv_sums, desc(sample_freq))
+    asv_sums <- column_to_rownames(asv_sums, "ID")
+    
+    asv_sums <- asv_sums[asv_sums$prev>=0.4,]
+    
+    emp_list[[e]] <- asv_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(bact_asvs_by_site)
+
+bact_emp_asv_sums_by_hab <- lapply(habs,
+                            make_emp_hab_list,
+                            bact_asvs_by_hab,
+                            new_bact_meta,
+                            new_bact_abun)
+
+names(bact_emp_asv_sums_by_hab) <- names(bact_asvs_by_hab)
+
+
+all_things_listed <- lapply(bact_emp_asv_sums_by_hab, function(x) lapply(x, rownames))
+flattened_ish <- lapply(all_things_listed, function(x) Reduce(c, x))
+
+all_things <- unlist(flattened_ish)
+
+all_things_unique <- unique(all_things)
+
+
+bact_abun_prevfilter_on_empo <- bact_abun[rownames(bact_abun) %in% all_things_unique,]
+bact_abun_prevfilter_on_empo <- bact_abun_prevfilter_on_empo[,colSums(bact_abun_prevfilter_on_empo)>0] #5422 OTUs, 1313 samples at 40% prevalence
+
+
+filt_bact_meta <- new_bact_meta[new_bact_meta$sequencing_id %in% names(bact_abun_prevfilter_on_empo),]
+
+
+saveRDS(bact_abun_prevfilter_on_empo, "../networks/input_data/bact_prev40_otus_matched_up.rds")
+
+filt_bact_meta <- new_bact_meta[which(as.character(new_bact_meta$sequencing_id) %in% names(bact_abun_prevfilter_on_empo)),]
+```
+
+
+# Match up the fully filtered fungi and bacterial tables
+
+```{r}
+
+filtered_fungi <- new_fung_abun_prevfilter_on_empo  # 1307 samples
+
+filtered_bact <- bact_abun_prevfilter_on_empo # 1313 samples
+
+fung_meta_match <- filt_fung_meta[filt_fung_meta$sample_id %in% filt_bact_meta$sample_id,]
+
+bact_meta_match <- filt_bact_meta[filt_bact_meta$sample_id %in% filt_fung_meta$sample_id,]
+
+matched_ids <- fung_meta_match$sample_id # 1265 samples
+
+
+# subset otu tables by samples matched in 16S and ITS
+fung_otu_match <- new_fung_abun_prevfilter_on_empo[,colnames(new_fung_abun_prevfilter_on_empo) %in% fung_meta_match$x_seq_id] # 1268 samples remain
+fung_otu_match <- fung_otu_match[rowSums(fung_otu_match)>0,] # 582 otus remain (0 removed)
+
+bact_otu_match <- bact_abun_prevfilter_on_empo[,colnames(bact_abun_prevfilter_on_empo) %in% bact_meta_match$sequencing_id] # 1268 samples remain
+bact_otu_match <- bact_otu_match[rowSums(bact_otu_match)>0,] # 5422 otus remain (0 removed)
+
+
+saveRDS(fung_otu_match, "../intermediates/prev40_fungal_otu_table_matched_up.rds")
+saveRDS(fung_meta_match, "../intermediates/prev40_fungal_otu_metadata_matched_up.rds")
+saveRDS(bact_otu_match, "../intermediates/prev40_bact_otu_table_matched_up.rds")
+saveRDS(bact_meta_match, "../intermediates/prev40_bact_otu_metadata_matched_up.rds")
+
+```
+
+When I did the match up culling after all the culling steps were done, it resulted in 1341 samples
+This time, matching up and then culling and then matching up again resulted in 1263 samples
+
+My logic for doing the matchup before the other culling steps were that I didn't non-matching samples and their unique ASVs to mess up the frequency distribution culling and following steps (single sample cull and 50% prevalence). I still think this makes sense. But I guess following the match up cull, the frequency dist and other steps got rid of different samples, leading to a greater disparity in sample mismatch.
+
+I will proceed with this for now.
+
+
+## Prepare files for MENAP
+
+
+```{r}
+## fungi
+
+# add in "ID" column to identify nodes later on
+fung_for_menap <- fung_otu_match
+#colnames(fung_for_menap) <- paste("X", colnames(fung_for_menap), sep="")
+
+library(tibble)
+
+fung_for_menap <- rownames_to_column(fung_for_menap, "ID")
+
+write.table(fung_for_menap, "../menap/fungi_prev40_otus_with_id.txt", sep = "\t", row.names = FALSE)
+
+
+## bacteria
+
+# add in "ID" column to identify nodes later on
+bact_for_menap <- bact_otu_match
+colnames(bact_for_menap) <- paste("X", colnames(bact_for_menap), sep="")
+
+bact_for_menap <- rownames_to_column(bact_for_menap, "ID")
+
+write.table(bact_for_menap, "../menap/bact_prev40_otus_with_id.txt", sep = "\t", row.names = FALSE)
+
+```
+
+
+
+
+
+
+
+

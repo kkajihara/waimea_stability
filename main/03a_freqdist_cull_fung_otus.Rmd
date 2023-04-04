@@ -20,30 +20,23 @@ library(phyloseq)
 ```{r, echo=FALSE}
 
 # read in abundance table
-# sample IDS are cols, ASVs are rows
-# abun <- readRDS("../intermediates/culled_asv_table.rds")
-# tax <- readRDS("../intermediates/culled_tax_table.rds")
-# 
-# its_meta <- readRDS("../intermediates/culled_metadata.rds")
+# sample IDS are cols, otus are rows
+# ITS sample IDs has X appended to front
 
-ps_noncontam <- readRDS("../intermediates/decontaminated_phyloseq_object_no_moss_no_lichen.rds")
+fung_otu_match <- readRDS("../intermediates/fungal_otu_table_matched_up.rds")
+fung_meta_match <- readRDS("../intermediates/fungal_otu_metadata_matched_up.rds")
 
-abun <- as.data.frame(otu_table(ps_noncontam))
-tax <- as.data.frame(tax_table(ps_noncontam))
-its_meta <- data.frame(sample_data(ps_noncontam))
-
+abun <- fung_otu_match # 34126 OTUs, 1372 samples
 
 ```
 
-### By ASVs
+### By otus
 
-Laura's guidance was for removing samples with low reads. To start, I will follow these steps for looking at ASVs.
+Laura's guidance was for removing samples with low reads. To start, I will follow these steps for looking at otus.
 
 ```{r, echo=FALSE}
 sampsums <- colSums(abun)
-asvsums <- rowSums(abun)
-
-
+otusums <- rowSums(abun)
 ```
 
 
@@ -51,56 +44,60 @@ First, she looks at the summary of sequencing depths:
 
 ```{r, echo=FALSE}
 # summary of sequencing depths
-summary(asvsums)
+summary(otusums)
 
 ```
 
 
-Then, checking how many ASVs have no reads and what the minimum non-zero sequencing depth is:
+Then, checking how many otus have no reads and what the minimum non-zero sequencing depth is:
 
 ```{r, echo=FALSE}
 
 # check how many samples have no reads and what the minimum non-zero sequencing depth is
-paste("Number of ASVs with no reads:",sum(asvsums==0))
-paste("Minimum non-zero sequencing depth:",sort(asvsums)[sum(asvsums==0)+1])
+paste("Number of otus with no reads:",sum(otusums==0))
+paste("Minimum non-zero sequencing depth:",sort(otusums)[sum(otusums==0)+1])
 
 ```
 
 As well as whether the maximum may be an outlier:
 ```{r, echo=FALSE}
 # is the maximum an outlier?
-tail(sort(asvsums),5)
+tail(sort(otusums),5)
 ```
 
 
-She said in her email that for rare ASVs, she usually only excludes those seen in only one sample (unless building a network). The other common option would be something "very low like 10 reads." Here we can look at how many ASVs we would exclude at either of those cutoffs.
+She said in her email that for rare otus, she usually only excludes those seen in only one sample (unless building a network). The other common option would be something "very low like 10 reads." Here we can look at how many otus we would exclude at either of those cutoffs.
 
 Plot version:
 
 ```{r, echo=FALSE}
 
-plot(sort(log1p(asvsums)), pch=19, xlab="Number of ASVs", ylab="Log of Reads", main="ASVs by read abundance with cutoffs set at 1 and 10 reads")
+plot(sort(log1p(otusums)), pch=19, xlab="Number of otus", ylab="Log of Reads", main="otus by read abundance with cutoffs set at 1, 5, and 10 reads")
 abline(h=log1p(1), lty=2, col="blue")
+abline(h=log1p(5), lty=2, col="green")
 abline(h=log1p(10), lty=2, col="magenta")
-
-
 ```
 
 
-If we cull ASVs with fewer than 10 reads:
+If we cull otus with fewer than 10 reads:
 ```{r, echo=FALSE}
 # hypothetical cutoff at 10 reads
-paste("We would remove this many ASVs:",sum(asvsums<10))
-paste0("Which is ", round((sum(asvsums<10)/length(asvsums))*100,2), "% of ASVs")
+paste("We would remove this many otus:",sum(otusums<10))
+paste0("Which is ", round((sum(otusums<10)/length(otusums))*100,2), "% of otus")
 ```
 
-If we cull everything with 1 read:
+If we cull everything with 5 reads:
 ```{r, echo=FALSE}
 # hypothetical cutoff at 1 reads
-paste("We would remove this many ASVs:", sum(asvsums<2))
-paste0("Which is ", round((sum(asvsums<2)/length(asvsums))*100,2), "% of ASVs")
+paste("We would remove this many otus:", sum(otusums<2))
+paste0("Which is ", round((sum(otusums<2)/length(otusums))*100,2), "% of otus")
 ```
-
+If we cull everything with 5 reads:
+```{r, echo=FALSE}
+# hypothetical cutoff at 1 reads
+paste("We would remove this many otus:", sum(otusums<6))
+paste0("Which is ", round((sum(otusums<6)/length(otusums))*100,2), "% of otus")
+```
 
 ### By Samples
 
@@ -143,7 +140,7 @@ control_ids <- unique(neg_con_dat$sequencing_id)
 # subset abundance data by control sequencing ids
 con_abun <- abun[,names(abun) %in% control_ids]
 
-# remove empty ASVs
+# remove empty otus
 con_abun <- con_abun[rowSums(con_abun) > 0,]
 
 controls <- colSums(con_abun)
@@ -212,7 +209,7 @@ Plot version:
 Here we have cutoff lines at 1000 reads in pink, 100 reads in blue, and 10 reads in dark green.
 ```{r plots, echo=FALSE}
 plot(sort(log1p(sampsums)), pch=19, xlab="Number of Samples", ylab="Log of Reads", main="Samples by read abundance with cutoffs set at 1000, 100, and 10 reads")
-abline(h=log1p(100), lty=2, col="blue")
+abline(h=log1p(190), lty=2, col="blue")
 abline(h=log1p(1000), lty=2, col="magenta")
 abline(h=log1p(10), lty=2, col="darkgreen")
 ```
@@ -229,8 +226,8 @@ paste0("Which is ", round((sum(sampsums<1000)/length(sampsums))*100,2), "% of Sa
 If we cull samples with 100 or fewer reads:
 ```{r, echo=FALSE}
 # hypothetical cutoff at 100 reads
-paste("We would remove this many Samples:",sum(sampsums<100))
-paste0("Which is ", round((sum(sampsums<100)/length(sampsums))*100,2), "% of Samples")
+paste("We would remove this many Samples:",sum(sampsums<190))
+paste0("Which is ", round((sum(sampsums<190)/length(sampsums))*100,2), "% of Samples")
 ```
 
 If we cull samples with 10 or fewer reads:
@@ -241,46 +238,34 @@ paste0("Which is ", round((sum(sampsums<10)/length(sampsums))*100,2), "% of Samp
 ```
 
 
-The 100 read line (blue) appears to be around a somewhat "break" in the data? 
+The 190 read line (blue) appears to be around a somewhat "break" in the data? 
 
 
 
 ```{r cull, echo=FALSE, message=FALSE}
 
-its_meta <- its_meta[its_meta$habitat %in% c("Marine","Terrestrial","Riverine"),]
-abun <- abun[,which(names(abun) %in% its_meta$sequencing_id)] # 1514 samples
-abun <- abun[rowSums(abun)>0,] # 49966 ASVs
-
 # want to figure out where that natural break in the data is (somewhere around 100 reads per sample)
-# adjusting the plot from earlier, it seems to be around 160 reads
+# adjusting the plot from earlier, it seems to be around 180 reads
 
-# so, want to cull the abundance file (and then reduce the metadata and tax files by samples or ASVs that are no longer there)
+# so, want to cull the abundance file (and then reduce the metadata and tax files by samples or otus that are no longer there)
 
-# original ITS asv table dimensions: 50129 ASVs, 1632 samples
-# for ASVs and samples in 3 habs of interest: 49966 ASVs, 1514 samples
+culled_abun <- abun[,colSums(abun)>190] # 47 samples removed, 1325 remain
+# remove otus with fewer than 5 reads
+culled_abun <- culled_abun[rowSums(culled_abun)>5,] # 30596 OTUs removed, 30596 remain
 
-culled_abun <- abun[,colSums(abun)>160] # 40 samples removed, 1474 remain
-# remove ASVs with only one read
-culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 7 ASVs removed, 49959 remain
-
-#remove aerosols and fungus corpus (empo3 categories)
-its_meta <- its_meta[which(!(its_meta$empo_3 %in% c("Aerosol (non-saline)", "Fungus corpus"))),]
-
-culled_abun <- culled_abun[,colnames(culled_abun) %in% its_meta$sequencing_id] # 1443 samples remain
-culled_abun <- culled_abun[rowSums(culled_abun)>1,] # 49749 ASVs remain
-
-saveRDS(culled_abun, "../intermediates/culled_asv_table_aerosols_and_fung_corp_removed.rds")
+saveRDS(culled_abun, "../intermediates/fung_culled_abun_otu_lauras_method_post_matchup.rds")
 
 
 # cull tax table
-culled_tax <- tax[rownames(tax) %in% rownames(culled_abun),]
-
-saveRDS(culled_tax, "../intermediates/culled_tax_table.rds")
+# culled_tax <- tax[rownames(tax) %in% rownames(culled_abun),]
+# 
+# saveRDS(culled_tax, "../intermediates/culled_tax_table.rds")
 
 # cull metadata
-culled_meta <- its_meta[its_meta$sequencing_id %in% names(culled_abun),]
+meta <- fung_meta_match
+culled_meta <- meta[meta$x_seq_id %in% names(culled_abun),]
 
-saveRDS(culled_meta, "../intermediates/culled_metadata_no_aerosols_fung_corp.rds")
+saveRDS(culled_meta, "../intermediates/fung_culled_metadata_otu_lauras_method_post_matchup.rds")
 
 
 ```

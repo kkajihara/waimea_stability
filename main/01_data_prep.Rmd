@@ -1,0 +1,172 @@
+---
+title: "17_otu_clustering"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(DECIPHER)
+library(Biostrings)
+library(speedyseq)
+library(decontam)
+
+library(dplyr)
+```
+
+
+```{r}
+#fung_physeq_raw <- readRDS("../intermediates/raw_fungal_physeq.rds")
+
+```
+
+```{r}
+
+# d <- DECIPHER::DistanceMatrix(test_fasta, processors = 5)
+# 
+# clusters <- DECIPHER::IdClusters(
+#   d, 
+#   method = "complete",
+#   cutoff = 0.03, # corresponds to 97% OTUs
+#   processors = 5
+# )
+
+fung_clusters <- readRDS("../otus/output/fung_otu_clusters.rds")
+
+fung_physeq_otus <- merge_taxa_vec(
+                        fung_physeq_raw,
+                        group = fung_clusters$cluster,
+                        tax_adjust = 2
+                      ) # 36841 OTUs vs 52112 raw ASVs
+
+
+
+```
+
+```{r}
+
+# decontam
+
+# summarize negative control data as logical variable for decontam function
+sample_data(fung_physeq_otus)$is.neg <- sample_data(fung_physeq_otus)$sample_type == "NegativeControl"
+its_decontamed <- isContaminant(fung_physeq_otus, method = "prevalence", neg = "is.neg")
+table(its_decontamed$contaminant) ## 20 OTUs identified as contaminants
+
+# more stringent criteria where all sequences more prevalent in negs than pos will be contaminants
+its_decontam_prev05 <- isContaminant(fung_physeq_otus, method = "prevalence", neg = "is.neg", threshold = 0.5)
+table(its_decontam_prev05$contaminant) ## 39 OTUs identified as contaminants
+
+
+# ps.pa <- transform_sample_counts(fung_physeq_otus, function(abund) 1*(abund>0))
+# ps.pa.neg <- prune_samples(sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+# ps.pa.pos <- prune_samples(!sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+# # Make data.frame of prevalence in positive and negative samples
+# df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+#                       contaminant=its_decontam_prev05$contaminant)
+# ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+#   xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+# remove contaminants from ps
+ps_noncontam <- prune_taxa(!its_decontam_prev05$contaminant, fung_physeq_otus) # 39 OTUs removed, 36802 remain
+ps_noncontam <- subset_samples(ps_noncontam, sample_sums(ps_noncontam) > 0) # 4 samples removed, 1673 remain
+
+#saveRDS(ps_noncontam, "../intermediates/decontaminated_fung_phyloseq_object_otus.rds")
+
+# ALSO, we want to remove moss and lichen because these may not reflect primary producers too well
+ps_noncon_no_mosslich_no_aer_fungcorp <- prune_samples(!(sample_data(ps_noncontam)$sample_type %in% c("MossThallus", "LichenThallus", "Aerosol (non-saline)", "Fungus corpus")),
+                           ps_noncontam) # 1631 samples remain
+ps_noncon_no_mosslich_no_aer_fungcorp <- subset_taxa(ps_noncon_no_mosslich_no_aer_fungcorp, taxa_sums(ps_noncon_no_mosslich_no_aer_fungcorp) > 0) # 35679 OTUs remain
+
+ps <- ps_noncon_no_mosslich_no_aer_fungcorp
+
+# keep only the three habitats of interest
+ps_3habs <- subset_samples(ps, sample_data(ps)$habitat %in% c("Terrestrial", "Riverine", "Marine")) # 1513 samples remain
+ps_3habs <- prune_taxa(taxa_sums(ps_3habs) > 0, ps_3habs) # 35588 OTUs remain
+
+# count beach samples as riverine
+sample_data(fung_physeq_otus)$is.neg <- sample_data(fung_physeq_otus)$sample_type == "NegativeControl"
+meta_sub[meta_sub$site_name=="Beach" & meta_sub$sample_type=="WaterSaline",]$habitat = "Riverine"
+
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name=="Beach" & sample_data(ps_3habs)$sample_type=="WaterSaline",]$habitat = "Riverine"
+
+# recode upland marine samples as non-saline water and riverine - this is only an issue in ITS
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name %in% c("DrumRoad", "Ridge") & sample_data(ps_3habs)$empo_3=="Water(saline)",]$habitat = "Riverine"
+
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name %in% c("DrumRoad", "Ridge") & sample_data(ps_3habs)$empo_3=="Water(saline)",]$empo_3 = "Water (non-saline)"
+
+saveRDS(ps_3habs, "../intermediates/decontam_fung_physeq_otus_sampletype_cull.rds")
+
+### go to 02_fung_bact_otu_matchup.Rmd to match up samples between loci!
+
+```
+
+
+
+## Bacteria
+Eventually redo this part with OTUs clustered from ASVs
+
+```{r}
+# bacteria test
+#otu <- fread("../16s_data/abundance_table_97.shared")
+# read in taxonomy file
+tax <- fread("../16s_data/annotations_97.taxonomy",
+             header = T,
+            sep = "\t")
+
+library(tidyr)
+# break up taxonomy info into separate columns
+tax <- tax %>%
+  separate(Taxonomy, 
+           c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+           sep = ";")
+
+saveRDS(tax, "../intermediates/bact_otu_taxonomy_table.rds")
+
+
+
+abun <- fread(file = "../16s_data/abundance_table_97.shared",
+             drop = c("numOtus", "label", "Group"),
+             header = T)
+
+abun_names <- fread(file = "../16s_data/abundance_table_97.shared",
+                   select = "Group",
+                   colClasses = "character",
+                   header = T)
+
+# no idea what this does - data.table syntax?
+abun <- abun[, Group := abun_names]
+
+# move group col to front
+abun <- abun %>% select(Group, everything())
+
+abun <- column_to_rownames(abun, "Group")
+
+# convert character cols to numeric
+#abun <- as.data.frame(sapply(abun,as.numeric))
+
+# transpose so ASVs are rows, samples are cols
+abun <- as.data.frame(t(abun)) # 112283 OTUs, 1618 samples
+
+
+bact_meta <- read.csv("../16s_data/cleaned/mm_16s_hiseqs_metadata_table.csv")
+
+#remove aerosols and fungus corpus (empo3 categories)
+bact_meta <- bact_meta[which(!(bact_meta$empo_3 %in% c("Aerosol (non-saline)", "Fungus corpus"))),]
+
+abun <- abun[,colnames(abun) %in% bact_meta$sequencing_id] # 1575 samples remain
+abun <- abun[rowSums(abun)>1,] # 110592 otus remain
+
+
+saveRDS(abun, "../16s_data/kk_bact_otu_table_no_aer_no_fungcorp.rds")
+saveRDS(bact_meta, "../16s_data/kk_bact_meta_no_aer_no_fungcorp.rds")
+
+
+### go to 02_fung_bact_otu_matchup.Rmd to match up samples between loci!
+```
+
+
+
+
