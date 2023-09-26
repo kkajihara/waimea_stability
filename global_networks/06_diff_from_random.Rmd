@@ -1,0 +1,191 @@
+---
+title: "06_diff_from_random"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load in data
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+```
+
+## scale free
+
+```{r}
+g <- fung_net
+
+fung_degree_dist <- degree_distribution(g)
+
+gg <- plot(fung_degree_dist, log = "xy", xlab = "Degree", ylab = "Fraction of nodes", main = "Degree distribution")
+
+
+fung_power_fit <- power.law.fit(degree(g))
+
+# Print the estimated power law exponent and goodness-of-fit p-value
+cat("Power law exponent:", as.character(fung_power_fit$alpha), "\n")
+cat("Goodness-of-fit p-value:", as.character(fung_power_fit$KS.p), "\n")
+```
+
+```{r}
+h <- bact_net
+
+bact_degree_dist <- degree_distribution(h)
+
+hh <- plot(bact_degree_dist, log = "xy", xlab = "Degree", ylab = "Fraction of nodes", main = "Degree distribution")
+
+
+bact_power_fit <- power.law.fit(degree(h))
+
+# Print the estimated power law exponent and goodness-of-fit p-value
+cat("Power law exponent:", as.character(bact_power_fit$alpha), "\n")
+cat("Goodness-of-fit p-value:", as.character(bact_power_fit$KS.p), "\n")
+```
+
+```{r}
+i <- cross_net
+
+cross_degree_dist <- degree_distribution(i)
+
+ii <- plot(cross_degree_dist, log = "xy", xlab = "Degree", ylab = "Fraction of nodes", main = "Degree distribution")
+
+
+cross_power_fit <- power.law.fit(degree(i))
+
+# Print the estimated power law exponent and goodness-of-fit p-value
+cat("Power law exponent:", as.character(cross_power_fit$alpha), "\n")
+cat("Goodness-of-fit p-value:", as.character(cross_power_fit$KS.p), "\n")
+```
+
+```{r}
+library(ggpubr)
+
+test = ggarrange(gg, hh, ii, nrow=1)
+```
+
+
+
+
+## small world
+
+```{r}
+library(qgraph)
+
+fung_sw = smallworldIndex(fung_net)
+
+bact_sw <- smallworldIndex(bact_net) 
+
+cross_sw <- smallworldIndex(cross_net)
+
+smallworld_values <- list(fung_sw, bact_sw, cross_sw)
+saveRDS(smallworld_values, "../intermediates/global/small_world_values.rds")
+
+```
+
+## Summarize values for rmd
+```{r}
+power_law_fit_pvals <- c(fung_power_fit$KS.p, bact_power_fit$KS.p, cross_power_fit$KS.p)
+smallworld_list <- readRDS("../intermediates/global/small_world_values.rds")
+
+smallworld_vals <- c(smallworld_list[[1]]$index,
+                     smallworld_list[[2]]$index,
+                     smallworld_list[[3]]$index)
+
+vals <- rbind(power_law_fit_pvals, smallworld_vals)
+vals <- as.data.frame(vals)
+colnames(vals) <- c("ITS", "16S", "Cross-domain")
+
+saveRDS(vals, "../intermediates/global/diff_from_random_values.rds")
+```
+
+
+
+
+# Independence between abundance and degree
+reads on y axis, degree on x
+
+```{r}
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+
+fung_df <- data.frame(degree = degree(fung_net))
+fung_df$reads <- rowSums(fung_abun)
+
+
+fung_lm <- lm(log(reads) ~ log(degree + 1), data = fung_df)
+summary(fung_lm)
+
+fung_pl <- ggplot(fung_df, aes(x=log(degree + 1), y = log(reads))) +
+  geom_point() +
+  ggtitle("Fungi") +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(subtitle = paste("R2 =", round(summary(fung_lm)$r.squared, 3),";", "P < 0.001")) +
+  scale_y_continuous(breaks = seq(4, 16, 4), limits = c(c(4, 16))) +
+  scale_x_continuous(breaks = seq(0, 4, 1), limits = c(c(0, 4)))
+
+#fung_cor <- cor.test(df$reads, df$degree)
+
+
+
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+bact_df <- data.frame(degree = degree(bact_net))
+bact_df$reads <- rowSums(bact_abun)
+
+bact_lm <- lm(log(reads) ~ log(degree), data = bact_df)
+summary(bact_lm)
+
+bact_pl <- ggplot(bact_df, aes(x=log(degree), y = log(reads))) +
+  geom_point() +
+  ggtitle("Bacteria") +
+  #geom_smooth(method = "lm", se = FALSE) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(subtitle = paste("R2 =",round(summary(bact_lm)$r.squared, 3), ";", "P < 0.001")) +
+  scale_y_continuous(breaks = seq(3, 15, 3), limits = c(c(2, 15))) +
+  scale_x_continuous(breaks = seq(1, 6, 1), limits = c(c(1, 6)))
+
+#bact_cor <- cor.test(bact_df$reads, bact_df$degree)
+
+
+
+cross_abun <- readRDS("../intermediates/global/prev20_cross_domain_abundance_table.rds")
+cross_abun <- cross_abun[rownames(cross_abun)!="dummy",]
+
+cross_df <- data.frame(degree = degree(cross_net))
+cross_df$reads <- rowSums(cross_abun)
+
+cross_lm <- lm(log(reads) ~ log(degree), data = cross_df)
+summary(cross_lm)
+
+cross_pl <- ggplot(cross_df, aes(x=log(degree), y = log(reads))) +
+  geom_point() +
+  ggtitle("Cross-domain") +
+  #geom_smooth(method = "lm", se = FALSE) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(subtitle = paste("R2 =", round(summary(cross_lm)$r.squared, 3), ";", "P < 0.001")) +
+  scale_y_continuous(breaks = seq(4, 16, 4), limits = c(c(2.9, 16))) +
+  scale_x_continuous(breaks = seq(1, 7, 2), limits = c(c(1, 7)))
+
+#cross_cor <- cor.test(cross_df$reads, cross_df$degree)
+
+
+library(patchwork)
+all_pl <- fung_pl + bact_pl + cross_pl
+
+ggsave("../figures/global/linear_regression_abundance_vs_degree_transformed.jpg", width=17, height=5)
+
+```
+
+
+

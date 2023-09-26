@@ -1,0 +1,177 @@
+---
+title: "15_map"
+output: html_document
+date: "2023-09-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Jack's version(?)
+library(raster)
+library(sf) # for reading shape files; read_sf
+library(scales) # for viridis
+library(stars) # for st_rasterize
+library(data.table)
+
+# read in data
+# elev <- raster("elevation_raster.asc")
+# rain <- raster("rain_raster.asc")
+load("../intermediates/better_elev/elev_rain.rdata")
+elev <- elev_r_wai
+rain <- rain_r_wai
+#sitepoints <- read.delim("sampling_site_points.csv", sep=",", stringsAsFactors=FALSE)
+
+meta <- setDT(readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds"))
+meta <- meta[ , c("lat","long"):= list(as.numeric(lat), as.numeric(long))]
+# extract sites
+sitepoints <- meta[ , .N , by = .(site_name, lat,long)]
+
+# Check geographic range of sampling points
+limits <- c(
+  min(meta$long),
+  min(meta$lat), 
+  max(meta$long),
+  max(meta$lat) 
+)
+
+# define a bounding box with a small cushion around the minimum and maximum
+bbox <- list(
+  p1 = list(long = limits[1] - 0.03, lat = limits[2] - 0.04) ,
+  p2 = list(long = limits[3] + 0.03, lat = limits[4] + 0.04)
+)
+
+# set up plot limits
+plot_lims <- list(x=c(bbox$p1$long, bbox$p2$long), y = c(bbox$p1$lat, bbox$p2$lat))
+
+##  Base Map -------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# hawaii coastline (state GIS, projection utm-4, nad83)
+hi_coast <- st_read("../intermediates/spatial/hawaii_coastline/coast_n83.shp",
+                    crs = "epsg:26904")
+
+
+## Streams -----------------------------------------------------------------------------------------------------------------------------------
+# check stream metadata to identify stream name
+streams      <- st_read('../intermediates/spatial/darstreams.kml')
+waimea_river <- streams[streams$Name == "Waimea R",]
+
+# crop river to plot area
+waimea_river <- st_crop(waimea_river, c(xmin = plot_lims$x[1],
+                                        xmax = plot_lims$x[2],
+                                        ymin = plot_lims$y[1],
+                                        ymax = plot_lims$y[2]))
+
+#river <- read_sf("waimea_river.kml")
+#coast <- read_sf("oahu_cost.dbf")
+
+# subset points for marine vs not marine
+sitepoints_mar <- sitepoints[8:14,]
+sitepoints <- sitepoints[1:7]
+
+# calculate ocean
+ocean <- st_rasterize(hi_coast, st_as_stars(elev))
+ocean[ocean > 0] <- NA
+ocean[!is.na(ocean)] <- 1
+
+# define colors
+#elevcols <- viridis_pal(begin=0.3, end=1)(10)
+
+elevcols <-paletteer_c("grDevices::Terrain 2", 10) 
+
+#watercol <- "#92ffff"
+watercol <- "#99f8ff"
+# make draft plot
+# plot(elev, col=elevcols)
+# plot(ocean, col=watercol, add=T, legend=FALSE, breaks="equal")
+# plot(hi_coast[1], add=T, col=rgb(0,0,0,0), border=watercol, lwd=2)
+# plot(waimea_river[1], lwd=2, col=watercol, add=TRUE)
+# points(sitepoints$lat ~ sitepoints$long, col="white", pch=20, cex=2)
+# points(sitepoints$lat ~ sitepoints$long, col="red", pch=17, cex=1)
+# points(sitepoints_mar$lat ~ sitepoints_mar$long, col="white", pch=20, cex=2)
+# points(sitepoints_mar$lat ~ sitepoints_mar$long, col="blue", pch=17, cex=1)
+
+# rectangle to figure out cropping
+xlims <- c(-158.077, -157.95)
+ylims <- c(21.586, 21.6509)
+
+#new_xlims <- c(-158.085, -157.94)
+#new_ylims <- c(21.586, 21.67)
+cropbox <- as(extent(xlims[1], xlims[2], ylims[1], ylims[2]), 'SpatialPolygons')
+crs(cropbox) <- "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs"
+plot(cropbox, add=TRUE)
+
+# crop stuff
+elev_crop <- crop(elev, cropbox)
+ocean_crop <- st_crop(ocean, st_as_sf(cropbox))
+st_crs(hi_coast) <- crs(cropbox) # will give warning, doesn't matter since projections are the same really
+coast_crop <- st_crop(hi_coast, st_as_sf(cropbox))
+
+# make map plot
+pdf("../figures/finals/map.pdf", useDingbats = FALSE, width = 7.7, height=5)
+plot(elev_crop, col=elevcols)
+plot(ocean_crop, col=watercol, add=T, legend=FALSE)
+#plot(coast_crop[1], add=T, col=rgb(0,0,0,0), border=watercol, lwd=2)
+plot(waimea_river[1], lwd=2, col=watercol, add=TRUE)
+#points(sitepoints$lat ~ sitepoints$long, col="white", pch=20, cex=3)
+points(sitepoints$lat ~ sitepoints$long, bg="red", pch=24, cex=1.4)
+#points(sitepoints_mar$lat ~ sitepoints_mar$long, col="white", pch=20, cex=3)
+points(sitepoints_mar$lat ~ sitepoints_mar$long, bg="blue", pch=23, cex=1.4)
+maps::map.scale(-158.07, 21.597, ratio=F, relwidth = 0.24)
+dev.off()
+
+
+
+# plot elev and rainfall for terrestrial sites
+sitepoints <- sitepoints[order(sitepoints$long),]
+sitepoints$rain <- extract(rain, data.frame(sitepoints$long, sitepoints$lat))
+sitepoints$elevation <- extract(elev, data.frame(sitepoints$long, sitepoints$lat))
+
+pdf("../figures/finals/rain.pdf", useDingbats = FALSE, height = 4.5, width=6.3)
+# par(mfrow=c(2,1))
+# plot(sitepoints$elevation ~ sitepoints$long, type="o", col="red", pch=20, 
+# 	cex=2, lwd=2, xlim=xlims, xaxs="i")
+plot(sitepoints$rain ~ sitepoints$long, type="o", col="#7DC4DE", pch=20, 
+	cex=2, lwd=2, xlim=xlims, xaxs="i")
+dev.off()
+
+# make inset maps
+
+# NOTE: because of github space limitations, the folder "better_elev"
+# must be downloaded from FigShare and unzipped here.
+# https://figshare.com/articles/dataset/Hawaii_elevation_data_for_waimea_microbe_paper/14538249
+# https://doi.org/10.6084/m9.figshare.14538249.v1 
+
+# elev_oahu <- merge( raster("../intermediates/better_elev/USGS_13_n22w158.tif"), raster("../intermediates/better_elev/USGS_13_n22w159.tif"))
+# oahx <- c(-158.33, -157.6)
+# oahy <- c(21.22, 21.73)
+# oahu_crop <- as(extent(oahx[1], oahx[2], oahy[1], oahy[2]), 'SpatialPolygons')
+# crs(oahu_crop) <- "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs "
+# elev_oahu <- crop(elev_oahu, oahu_crop)
+
+# make vector for ocean
+# oahu_crop_st <- as.matrix(data.frame(x=c(oahx, rev(oahx)),y=rep(oahy,each=2)))
+# oahu_crop_st <- rbind(oahu_crop_st, oahu_crop_st[1,])
+# oahu_crop_st <- st_polygon(list(oahu_crop_st))
+# oahu_crop_st <- st_geometry(oahu_crop_st)
+# st_crs(oahu_crop_st) <- "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs"
+# sf_use_s2(FALSE)
+# oceanpoly <- st_difference( oahu_crop_st, hi_coast[1])[1]
+# 
+# 
+# 
+# pdf("map_inset.pdf", useDingbats = FALSE)
+# qplot(elev_oahu, col=elevcols)
+# plot(oceanpoly, col=watercol, border=watercol, add=T, breaks="equal")
+# plot(cropbox, border="black", add=T, lwd=4)
+# plot(cropbox, border="yellow", add=T, lwd=2)
+# dev.off()
+
+
+
+```
+
+
+

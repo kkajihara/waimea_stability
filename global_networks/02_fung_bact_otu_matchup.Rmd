@@ -1,0 +1,97 @@
+---
+title: "10_fung_bact_data_matchup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+```
+
+Goal:
+-Match up samples between 16S and ITS datasets
+
+
+```{r}
+# read in data 
+fung_ps <- readRDS("../intermediates/global/new_fung_physeq_sampletype_cull.rds") 
+fung_otu_table <- data.frame(otu_table(fung_ps)) # 28215 OTUs, 1494 samples
+
+bact_ps <- readRDS("../intermediates/global/new_bact_physeq_sampletype_cull.rds") 
+bact_otu_table <- data.frame(otu_table(bact_ps)) # 118965 OTUs, 1489 samples
+
+#bact_otu_table <- readRDS("../16s_data/kk_bact_otu_table_no_aer_no_fungcorp.rds") # 110592 OTUs, 1575 samples
+
+
+full_met <- read.csv("../data/metadata/all_waimea_hiseq_sample_metadata.csv") # 3468 samples
+full_met <- full_met[full_met$habitat %in% c("Marine","Terrestrial","Riverine"),] # 3206 samples
+full_met$x_seq_id <- paste0("X", full_met$sequencing_id)
+
+fung_metadata <- full_met[full_met$x_seq_id %in% names(fung_otu_table),] # 1513 samples
+bact_metadata <- full_met[full_met$x_seq_id %in% names(bact_otu_table),] # 1510 samples
+
+
+# fung_metadata <- data.frame(sample_data(fung_ps)) # 1513 samples
+# fung_metadata <- fung_metadata[fung_metadata$habitat %in% c("Marine", "Terrestrial", "Riverine"),] #1513 samples
+# 
+# bact_metadata <- readRDS("../16s_data/kk_bact_meta_no_aer_no_fungcorp.rds") # 1700 samples
+# bact_metadata <- bact_metadata[bact_metadata$habitat %in% c("Marine", "Terrestrial", "Riverine"),] #1530 samples
+
+
+
+fung_meta_raw <- full_met[grep("ITS", full_met$locus, ignore.case = T),] # 1586 samples
+bact_meta_raw <- full_met[grep("16S", full_met$locus, ignore.case = T),] # 1620 samples
+
+```
+
+```{r}
+
+fung_meta_match <- fung_metadata[fung_metadata$sample_id %in% bact_metadata$sample_id,]
+fung_meta_match$x_seq_id <- paste0("X", fung_meta_match$sequencing_id)
+
+bact_meta_match <- bact_metadata[bact_metadata$sample_id %in% fung_metadata$sample_id,]
+
+matched_ids <- fung_meta_match$sample_id # 1469 samples
+
+
+fung_nonmatch_id <- fung_metadata[!(fung_metadata$sample_id %in% matched_ids),]
+
+bact_nonmatch_id <- bact_metadata[!(bact_metadata$sample_id %in% matched_ids),]
+
+f_nonmatch_ids <- fung_nonmatch_id$sample_id # 25 samples
+b_nonmatch_ids <- bact_nonmatch_id$sample_id # 20 samples
+
+
+```
+
+```{r}
+# subset otu tables by samples matched in 16S and ITS
+fung_otu_match <- fung_otu_table[,colnames(fung_otu_table) %in% fung_meta_match$x_seq_id] # 1469 samples remain
+fung_otu_match <- fung_otu_match[rowSums(fung_otu_match)>0,] # 28105 otus remain 
+
+bact_otu_match <- bact_otu_table[,colnames(bact_otu_table) %in% bact_meta_match$x_seq_id] # 1469 samples remain
+bact_otu_match <- bact_otu_match[rowSums(bact_otu_match)>0,] # 118673 otus remain 
+
+
+saveRDS(fung_otu_match, "../intermediates/global/fungal_otu_table_matched_up.rds")
+saveRDS(fung_meta_match, "../intermediates/global/fungal_otu_metadata_matched_up.rds")
+saveRDS(bact_otu_match, "../intermediates/global/bact_otu_table_matched_up.rds")
+saveRDS(bact_meta_match, "../intermediates/global/bact_otu_metadata_matched_up.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

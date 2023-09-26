@@ -1,0 +1,615 @@
+---
+title: "10_hubs_and_keystones"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(patchwork)
+library(vegan)
+library(scales)
+library(ggplot2)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# read in data = 20% prevalence global networks
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+```
+
+```{r}
+
+# import data
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+# metadata
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+# hub data
+fung_hub_data <- readRDS("../intermediates/global/fung_netcarto_results.rds")[[1]]
+             
+bact_hub_data <- readRDS("../intermediates/global/bact_netcarto_results.rds")[[1]]
+             
+cross_hub_data <- readRDS("../intermediates/global/cross_netcarto_results.rds")[[1]]
+
+```
+
+```{r}
+# taxonomy
+
+# fungi
+fung_tax_table <- readRDS("../intermediates/other/taxonomy_table.rds")
+fung_otu_info <- readRDS("../intermediates/other/fung_otu_cluster_info.rds")
+
+fung_seeds <- fung_otu_info[fung_otu_info$Type=="S",]
+fung_seed_tax <- fung_tax_table[fung_tax_table$OTU %in% fung_seeds$QueryLabel,]
+fung_seed_tax$denovo_OTU <- fung_seeds$denovo_name[match(fung_seed_tax$OTU, fung_seeds$QueryLabel)]
+
+saveRDS(fung_seed_tax, "../intermediates/global/fung_seed_taxonomy.rds")
+
+# bacteria
+bact_tax_table <- readRDS("../intermediates/other/bact_asv_taxonomy.rds")
+bact_otu_info <- readRDS("../intermediates/other/bact_otu_cluster_info.rds")
+
+bact_seeds <- bact_otu_info[bact_otu_info$Type=="S",]
+bact_seed_tax <- bact_tax_table[bact_tax_table$OTU %in% bact_seeds$QueryLabel,]
+bact_seed_tax$denovo_OTU <- bact_seeds$denovo_name[match(bact_seed_tax$OTU, bact_seeds$QueryLabel)]
+
+saveRDS(bact_seed_tax, "../intermediates/global/bact_seed_taxonomy.rds")
+
+cross_tax <- rbind(fung_seed_tax, bact_seed_tax)
+
+saveRDS(cross_tax, "../intermediates/global/cross_seed_taxonomy.rds")
+  
+```
+
+## Netcarto hub results
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+fung_hubs_only = fung_hub_data[grep("Hub", fung_hub_data$role, ignore.case=TRUE),]
+fung_hubs_only <- arrange(fung_hubs_only, desc(participation), desc(connectivity))
+
+fung_net_no_hubs <- delete_vertices(fung_net, fung_hubs_only$name)
+
+# Calculate node removal robustness
+# fung_full_deg_robust <- robustness(fung_net, type = "vertex", "degree")
+# fung_full_deg_robust$Type <- "Full"
+# 
+# fung_nohub_deg_robust <- robustness(fung_net_no_hubs, type = "vertex", "degree")
+# fung_nohub_deg_robust$Type <- "Hubs Removed"
+# 
+# fung_hub_rob_data <- rbind(fung_full_deg_robust, fung_nohub_deg_robust)
+# 
+# 
+# a <- ggplot(fung_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+#   geom_line() +
+#   labs(x="Percentage of nodes removed", y="Size of largest connected component",
+#        title="Degree-based attack")
+
+
+# Calculate betweeness removal robustness
+fung_full_bc_robust <- robustness(fung_net, type = "vertex", "btwn.cent")
+fung_full_bc_robust$Type <- "Full"
+
+fung_nohub_bc_robust <- robustness(fung_net_no_hubs, type = "vertex", "btwn.cent")
+fung_nohub_bc_robust$Type <- "Hubs Removed"
+
+fung_bc_hub_rob_data <- rbind(fung_full_bc_robust, fung_nohub_bc_robust)
+
+
+b <- ggplot(fung_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line() +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="ITS, Betweenness-based attack")
+
+
+# library(ggpubr)
+# 
+# c <- ggarrange(a,b, nrow=1, common.legend = TRUE, legend = "right")
+
+ggsave("../figures/global/fung_netcarto_hub_removal_robustness_curves.png", b, width=7, height=5)
+
+
+```
+
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+bact_hubs_only = bact_hub_data[grep("Hub", bact_hub_data$role, ignore.case=TRUE),]
+bact_hubs_only <- arrange(bact_hubs_only, desc(participation), desc(connectivity))
+
+bact_net_no_hubs <- delete_vertices(bact_net, bact_hubs_only$name)
+
+# Calculate node removal robustness
+# bact_full_deg_robust <- robustness(bact_net, type = "vertex", "degree")
+# bact_full_deg_robust$Type <- "Full"
+# 
+# bact_nohub_deg_robust <- robustness(bact_net_no_hubs, type = "vertex", "degree")
+# bact_nohub_deg_robust$Type <- "Hubs Removed"
+
+#bact_hub_rob_data <- rbind(bact_full_deg_robust, bact_nohub_deg_robust)
+
+
+# bact_degree_robplot <- ggplot(bact_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+#   geom_line() +
+#   labs(x="Percentage of nodes removed", y="Size of largest connected component",
+#        title="Degree-based attack")
+
+
+# Calculate betweeness removal robustness
+bact_full_bc_robust <- robustness(bact_net, type = "vertex", "btwn.cent")
+bact_full_bc_robust$Type <- "Full"
+
+bact_nohub_bc_robust <- robustness(bact_net_no_hubs, type = "vertex", "btwn.cent")
+bact_nohub_bc_robust$Type <- "Hubs Removed"
+
+bact_bc_hub_rob_data <- rbind(bact_full_bc_robust, bact_nohub_bc_robust)
+
+
+bact_bc_robplot <- ggplot(bact_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line() +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="16S, Betweenness-based attack")
+
+
+# library(ggpubr)
+# 
+# bact_robplots <- ggarrange(bact_degree_robplot,bact_bc_robplot, nrow=1, common.legend = TRUE, legend = "right")
+
+ggsave("../figures/global/bact_netcarto_hub_removal_robustness_curves.png", width=7, height=5)
+
+
+```
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+cross_hubs_only = cross_hub_data[grep("Hub", cross_hub_data$role, ignore.case=TRUE),]
+cross_hubs_only <- arrange(cross_hubs_only, desc(participation), desc(connectivity))
+
+cross_net_no_hubs <- delete_vertices(cross_net, cross_hubs_only$name)
+
+# Calculate node removal robustness
+# cross_full_deg_robust <- robustness(cross_net, type = "vertex", "degree")
+# cross_full_deg_robust$Type <- "Full"
+# 
+# cross_nohub_deg_robust <- robustness(cross_net_no_hubs, type = "vertex", "degree")
+# cross_nohub_deg_robust$Type <- "Hubs Removed"
+# 
+# cross_hub_rob_data <- rbind(cross_full_deg_robust, cross_nohub_deg_robust)
+
+
+# cross_degree_robplot <- ggplot(cross_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+#   geom_line() +
+#   labs(x="Percentage of nodes removed", y="Size of largest connected component",
+#        title="Degree-based attack")
+
+
+# Calculate betweeness removal robustness
+cross_full_bc_robust <- robustness(cross_net, type = "vertex", "btwn.cent")
+cross_full_bc_robust$Type <- "Full"
+
+cross_nohub_bc_robust <- robustness(cross_net_no_hubs, type = "vertex", "btwn.cent")
+cross_nohub_bc_robust$Type <- "Hubs Removed"
+
+cross_bc_hub_rob_data <- rbind(cross_full_bc_robust, cross_nohub_bc_robust)
+
+
+cross_bc_robplot <- ggplot(cross_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line() +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Cross-domain, Betweenness-based attack")
+
+# 
+# library(ggpubr)
+# 
+# cross_robplots <- ggarrange(cross_degree_robplot,cross_bc_robplot, nrow=1, common.legend = TRUE, legend = "right")
+
+ggsave("../figures/global/cross_netcarto_hub_removal_robustness_curves.png", width=7, height=5)
+
+
+```
+
+```{r}
+saveRDS(list(fung_bc_hub_rob_data, bact_bc_hub_rob_data, cross_bc_hub_rob_data), "../intermediates/global/robustness_data_hub_knockouts.rds")
+```
+
+
+## Fungi - Keystone identification
+
+```{r}
+#Important nodes
+#First calcuate betweenness (nodes w/ high betweenness centrality represent key connector species in network)
+V(fung_net)$betweenness = igraph::betweenness(fung_net,normalized=FALSE)
+#Then calculate node degree (nodes with high degree represent network hubs)
+V(fung_net)$degree = igraph::degree(fung_net,mode="all",normalized=FALSE)
+
+V(fung_net)$closeness = igraph::closeness(fung_net)
+
+
+## look at distribution of degree and closeness ratio
+fung_hub_dat <- data.frame(OTU = V(fung_net)$name,
+                           degree = V(fung_net)$degree,
+                           closeness = V(fung_net)$closeness)
+fung_hub_dat$hub_score <- hub_score(fung_net)$vector
+
+fung_hub_dat <- fung_hub_dat[fung_hub_dat$degree!=0,]
+
+fung_hub_dat$deg_close_ratio <- fung_hub_dat$degree * fung_hub_dat$closeness
+
+fung_hub_dat <- arrange(fung_hub_dat, 
+                        #desc(deg_close_ratio), 
+                        desc(hub_score))
+
+
+## add weights to do hubs?
+# fung_se <- readRDS("../networks/prev20/outputs/fung_prev20_mb_thresh01_with_dummy.rds")
+# 
+# optbeta <- as.matrix(symBeta(getOptBeta(fung_net)))
+# edge_cols <-  ifelse(optbeta>0, 'forestgreen', 'red')[upper.tri(optbeta) & optbeta!=0]
+# ig2.mb <- adj2igraph(getRefit(se.mb.amgut2),  rmEmptyNodes=TRUE,
+#                                     vertex.attr=list(name=taxa_names(amgut2.filt.phy)),
+#                                     edge.attr=list(color= edge_cols))
+
+
+
+# weighted_bact_net <- test
+# 
+# gg_wt_bact <- ggnetwork(asNetwork(weighted_bact_net), layout="fruchtermanreingold")
+# gg_wt_bact$edge_sign <- ifelse(gg_wt_bact$weight>0, "positive", "negative")
+
+
+fung_deg_pctile <- quantile(fung_hub_dat$degree, probs = c(.25, .50, .75, .80, .85, .90, .95, .96, .97, .98, .99, 1))
+
+fung_close_pctile <- quantile(fung_hub_dat$closeness, probs = c(.25, .50, .75, .80, .85, .90, .95, .96, .97, .98, .99, 1))
+
+
+
+V(fung_net)$Phylum <- fung_seed_tax$Phylum[match(V(fung_net)$name, fung_seed_tax$denovo_OTU)]
+
+V(fung_net)$Family <- fung_seed_tax$Family[match(V(fung_net)$name, fung_seed_tax$denovo_OTU)]
+
+V(fung_net)$Order <- fung_seed_tax$Order[match(V(fung_net)$name, fung_seed_tax$denovo_OTU)]
+  
+V(fung_net)$Class <- fung_seed_tax$Class[match(V(fung_net)$name, fung_seed_tax$denovo_OTU)]
+
+V(fung_net)$Genus <- fung_seed_tax$Genus[match(V(fung_net)$name, fung_seed_tax$denovo_OTU)]
+
+
+
+fung_abun <- fung_abun[row.names(fung_abun)!="dummy",]
+
+fung_relabun <- decostand(t(fung_abun), "total")
+fung_relabun <- as.data.frame(t(fung_relabun))
+
+V(fung_net)$proportion <- apply(fung_abun, 1, function(c) sum(c!=0) / dim(fung_abun)[2])
+
+V(fung_net)$relabun <- apply(fung_relabun, 1, function(b) sum(b) / dim(fung_abun)[2])
+
+
+# want a table of network OTUs with betweenness centrality and node degree scores, also relative abundance and prevalence
+fung_tab <- data.frame(OTU = V(fung_net)$name,
+                       Phylum = V(fung_net)$Phylum,
+                       Class = V(fung_net)$Class,
+                  Order = V(fung_net)$Order,
+                  Family = V(fung_net)$Family,
+                  Genus = V(fung_net)$Genus,
+                  btwn_cen = V(fung_net)$betweenness,
+                  closeness = V(fung_net)$closeness,
+                  degree = V(fung_net)$degree,
+                  pct_samples = V(fung_net)$proportion,
+                  relabun = V(fung_net)$relabun)
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+fung_tab$prevalence <- fung_tab$pct_samples * fung_tab$relabun
+
+saveRDS(fung_tab, "../intermediates/global/fung_keystone_data.rds")
+
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+fung.keystone.plot <- ggplot(fung_tab,aes(x=degree,y=btwn_cen, color=Class)) +
+    geom_point(aes(size=prevalence),position="jitter") +
+    ylab("Betweenness Centrality") + 
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+                       labels=trans_format("log10",math_format(10^.x))) +
+    theme(text=element_text(colour="black",size=12)) + 
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    #scale_colour_manual(values=pal, limits=GroupRO) +
+    #guides(colour=guide_legend(override.aes=list(size=3))) +
+    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+    theme(legend.key.size = unit(.4, "cm"))+
+    ggtitle("Fungi")
+
+fung.keystone.plot
+
+ggsave("../figures/global/fungi_keystone_plot.png", width=12, height=6)
+
+
+
+maybe_fung_keystones <- fung_tab[fung_tab$degree>20,]
+fung_scored_hubs <- fung_hub_data[grep("Hub", fung_hub_data$role),] # all candidate keystones are in the netcarto-identified hub list
+
+
+fung_hub_df <- fung_tab[,c("OTU", "degree", "closeness", "btwn_cen", "Class", "Order", "Family", "Genus")]
+
+fung_hub_df <- dplyr::arrange(fung_hub_df, desc(degree), desc(closeness))
+
+write.csv(fung_hub_df[1:100,], "../intermediates/fung_hub_taxa.csv")
+
+saveRDS(fung_hub_df, "../intermediates/full_fung_hub_data.rds")
+
+## how to get candidate OTUs?
+# ones that have high betweenenss and node degree, but low prevalence (within high degree percentile bin??)
+
+```
+
+
+## Bacteria
+
+```{r}
+#Important nodes
+#First calcuate betweenness (nodes w/ high betweenness centrality represent key connector species in network)
+V(bact_net)$betweenness = igraph::betweenness(bact_net,normalized=FALSE)
+#Then calculate node degree (nodes with high degree represent network hubs)
+V(bact_net)$degree = igraph::degree(bact_net,mode="all",normalized=FALSE)
+
+V(bact_net)$closeness = igraph::closeness(bact_net)
+
+V(bact_net)$Family <- bact_seed_tax$Family[match(V(bact_net)$name, bact_seed_tax$denovo_OTU)]
+
+V(bact_net)$Order <- bact_seed_tax$Order[match(V(bact_net)$name, bact_seed_tax$denovo_OTU)]
+  
+V(bact_net)$Class <- bact_seed_tax$Class[match(V(bact_net)$name, bact_seed_tax$denovo_OTU)]
+
+V(bact_net)$Phylum <- bact_seed_tax$Phylum[match(V(bact_net)$name, bact_seed_tax$denovo_OTU)]
+
+V(bact_net)$Genus <- bact_seed_tax$Genus[match(V(bact_net)$name, bact_seed_tax$denovo_OTU)]
+
+
+bact_abun <- bact_abun[row.names(bact_abun)!="dummy",]
+
+bact_relabun <- decostand(t(bact_abun), "total")
+bact_relabun <- as.data.frame(t(bact_relabun))
+
+
+
+V(bact_net)$proportion <- apply(bact_abun, 1, function(c) sum(c!=0) / dim(bact_abun)[2])
+
+V(bact_net)$relabun <- apply(bact_relabun, 1, function(b) sum(b) / dim(bact_abun)[2])
+
+
+# want a table of network OTUs with betweenness centrality and node degree scores, also relative abundance and prevalence
+bact_tab <- data.frame(OTU = V(bact_net)$name,
+                       Phylum = V(bact_net)$Phylum,
+                  Class = V(bact_net)$Class,
+                  Order = V(bact_net)$Order,
+                  Family = V(bact_net)$Family,
+                  Genus = V(bact_net)$Genus,
+                  btwn_cen = V(bact_net)$betweenness,
+                  closeness = V(bact_net)$closeness,
+                  degree = V(bact_net)$degree,
+                  pct_samples = V(bact_net)$proportion,
+                  relabun = V(bact_net)$relabun)
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+bact_tab$prevalence <- bact_tab$pct_samples * bact_tab$relabun
+
+saveRDS(bact_tab, "../intermediates/global/bact_keystone_data.rds")
+
+
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+bact.keystone.plot <- ggplot(bact_tab,aes(x=degree,y=btwn_cen, color = Phylum)) +
+    geom_point(aes(size=prevalence),position="jitter") +
+    ylab("Betweenness Centrality") + 
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+                       labels=trans_format("log10",math_format(10^.x))) +
+    theme(text=element_text(colour="black",size=12)) + 
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    #scale_colour_manual(values=pal, limits=GroupRO) +
+    #guides(colour=guide_legend(override.aes=list(size=3))) +
+    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+    theme(legend.key.size = unit(.4, "cm"))+
+    ggtitle("Bacteria")
+
+bact.keystone.plot
+
+ggsave("../figures/global/bact_keystone_plot.png", width=15, height=6)
+
+
+maybe_bact_keystones <- bact_tab[bact_tab$degree>300,]
+bact_scored_hubs <- bact_hub_data[grep("Hub", bact_hub_data$role),] 
+maybe_bact_keystones$OTU %in% bact_scored_hubs$name # all candidate keystones are in the netcarto-identified hub list
+
+
+bact_hub_df <- bact_tab[,c("OTU", "degree", "closeness", "btwn_cen", "Phylum", "Class", "Order", "Family", "Genus")]
+
+bact_hub_df <- dplyr::arrange(bact_hub_df, desc(degree), desc(closeness))
+
+write.csv(bact_hub_df[1:100,], "../intermediates/bact_hub_taxa.csv")
+
+saveRDS(bact_hub_df, "../intermediates/full_bact_hub_data.rds")
+
+## how to get candidate OTUs?
+# ones that have high betweenenss and node degree, but low prevalence (within high degree percentile bin??)
+
+```
+
+## Cross-domain
+
+```{r}
+#Important nodes
+#First calcuate betweenness (nodes w/ high betweenness centrality represent key connector species in network)
+V(cross_net)$betweenness = igraph::betweenness(cross_net,normalized=FALSE)
+#Then calculate node degree (nodes with high degree represent network hubs)
+V(cross_net)$degree = igraph::degree(cross_net,mode="all",normalized=FALSE)
+
+V(cross_net)$closeness = igraph::closeness(cross_net)
+
+V(cross_net)$Family <- cross_tax$Family[match(V(cross_net)$name, cross_tax$denovo_OTU)]
+
+V(cross_net)$Order <- cross_tax$Order[match(V(cross_net)$name, cross_tax$denovo_OTU)]
+  
+V(cross_net)$Class <- cross_tax$Class[match(V(cross_net)$name, cross_tax$denovo_OTU)]
+
+V(cross_net)$Phylum <- cross_tax$Phylum[match(V(cross_net)$name, cross_tax$denovo_OTU)]
+
+V(cross_net)$Genus <- cross_tax$Genus[match(V(cross_net)$name, cross_tax$denovo_OTU)]
+
+
+### make cross-domain abundance table
+bact_df <- data.frame(seq_id <- bact_meta$sequencing_id,
+                      x_seq_id <- bact_meta$x_seq_id,
+                      sample <- bact_meta$sample_id)
+names(bact_df) <- c("seq_id", "x_seq_id", "sample")
+
+fung_df <- data.frame(seq_id <- fung_meta$sequencing_id,
+                      x_seq_id <- fung_meta$x_seq_id,
+                      sample <- fung_meta$sample_id)
+names(fung_df) <- c("seq_id", "x_seq_id", "sample")
+
+
+f_abun_test <- fung_abun
+names(f_abun_test) <- as.character(fung_df$sample[match(names(f_abun_test), fung_df$x_seq_id)])
+f_abun_test <- f_abun_test[, order(names(f_abun_test))]
+
+b_abun_test <- bact_abun
+names(b_abun_test) <- as.character(bact_df$sample[match(names(b_abun_test), bact_df$x_seq_id)])
+b_abun_test <- b_abun_test[, order(names(b_abun_test))]
+
+keep_rownames <- c(rownames(f_abun_test), rownames(b_abun_test))
+
+cross_abun <- plyr::rbind.fill(f_abun_test, b_abun_test)
+rownames(cross_abun) <- keep_rownames
+
+saveRDS(cross_abun, "../intermediates/global/prev20_cross_domain_abundance_table.rds")
+
+
+cross_abun <- cross_abun[row.names(cross_abun)!="dummy",]
+
+cross_relabun <- decostand(t(cross_abun), "total")
+cross_relabun <- as.data.frame(t(cross_relabun))
+
+
+
+V(cross_net)$proportion <- apply(cross_abun, 1, function(c) sum(c!=0) / dim(cross_abun)[2])
+
+V(cross_net)$relabun <- apply(cross_relabun, 1, function(b) sum(b) / dim(cross_abun)[2])
+
+
+# want a table of network OTUs with betweenness centrality and node degree scores, also relative abundance and prevalence
+cross_tab <- data.frame(OTU = V(cross_net)$name,
+                       Phylum = V(cross_net)$Phylum,
+                  Class = V(cross_net)$Class,
+                  Order = V(cross_net)$Order,
+                  Family = V(cross_net)$Family,
+                  Genus = V(cross_net)$Genus,
+                  btwn_cen = V(cross_net)$betweenness,
+                  closeness = V(cross_net)$closeness,
+                  degree = V(cross_net)$degree,
+                  pct_samples = V(cross_net)$proportion,
+                  relabun = V(cross_net)$relabun)
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+cross_tab$prevalence <- cross_tab$pct_samples * cross_tab$relabun
+
+saveRDS(cross_tab, "../intermediates/global/cross_keystone_data.rds")
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+cross.keystone.plot <- ggplot(cross_tab,aes(x=degree,y=btwn_cen, color = Phylum)) +
+    geom_point(aes(size=prevalence),position="jitter") +
+    ylab("Betweenness Centrality") +
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+                       labels=trans_format("log10",math_format(10^.x))) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    #scale_colour_manual(values=pal, limits=GroupRO) +
+    #guides(colour=guide_legend(override.aes=list(size=3))) +
+    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+    theme(legend.key.size = unit(.4, "cm"))+
+    ggtitle("Cross-domain")
+
+cross.keystone.plot
+
+ggsave("../figures/global/cross_keystone_plot.png", width=20, height=8)
+
+
+
+maybe_cross_keystones <- cross_tab[cross_tab$degree>500,]
+cross_scored_hubs <- cross_hub_data[grep("Hub", cross_hub_data$role),] 
+maybe_cross_keystones$OTU %in% cross_scored_hubs$name # all candidate keystones are in the netcarto-identified hub list
+
+
+
+cross_hub_df <- cross_tab[,c("OTU", "degree", "closeness", "btwn_cen", "Phylum", "Class", "Order", "Family", "Genus")]
+
+cross_hub_df <- dplyr::arrange(cross_hub_df, desc(degree), desc(closeness))
+
+write.csv(cross_hub_df[1:100,], "../intermediates/crossdom_hub_taxa.csv")
+
+saveRDS(cross_hub_df, "../intermediates/full_cross_hub_data.rds")
+
+## how to get candidate OTUs?
+# ones that have high betweenenss and node degree, but low prevalence (within high degree percentile bin??)
+
+```
+
+
+
+
+
+
+
+
+

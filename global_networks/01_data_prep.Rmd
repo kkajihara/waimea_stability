@@ -1,0 +1,263 @@
+---
+title: "17_otu_clustering"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(decontam)
+library(tibble)
+library(dplyr)
+library(data.table)
+```
+
+
+```{r}
+fung_physeq_raw <- readRDS("../intermediates/other/raw_fungal_physeq.rds")
+
+fung_clust_dat <- readRDS("../intermediates/other/fung_otu_cluster_info.rds")
+
+```
+
+```{r}
+
+# d <- DECIPHER::DistanceMatrix(test_fasta, processors = 5)
+# 
+# clusters <- DECIPHER::IdClusters(
+#   d, 
+#   method = "complete",
+#   cutoff = 0.03, # corresponds to 97% OTUs
+#   processors = 5
+# )
+
+#fung_clusters <- readRDS("../otus/output/fung_otu_clusters.rds")
+
+fung_clusters <- data.frame(row.names = fung_clust_dat$QueryLabel,
+                            cluster = fung_clust_dat$denovo_name)
+
+#fung_clusters$cluster <- readr::parse_number(as.character(fung_clusters$cluster))
+
+# fung_physeq_otus <- merge_taxa_vec(
+#                         fung_physeq_raw,
+#                         group = fung_clusters$cluster,
+#                         tax_adjust = 2
+#                       ) # 36841 OTUs vs 52112 raw ASVs
+
+fung_otu_physeq <- fung_physeq_raw
+new_otu_tax <- as.data.frame(tax_table(fung_otu_physeq))
+new_otu_tax$denovo_OTU <- fung_clusters$cluster[match(rownames(tax_table(fung_otu_physeq)),
+                                                                     rownames(fung_clusters))]
+tax_table(fung_otu_physeq) <- as.matrix(new_otu_tax)
+
+
+# aggregate dataset by otu name
+
+old_fung_otutab <- as.data.frame(otu_table(fung_otu_physeq))
+old_fung_otutab$otu_name <- fung_clusters$cluster[match(rownames(old_fung_otutab), rownames(fung_clusters))]
+old_fung_otutab <- relocate(old_fung_otutab, otu_name)
+
+old_fung_otutab <- rownames_to_column(old_fung_otutab, "asv")
+
+samp_names <- names(old_fung_otutab)[3:ncol(old_fung_otutab)]
+new_fung_otutab <- stats::aggregate(old_fung_otutab[,samp_names], by=list(old_fung_otutab$otu_name), sum)
+
+new_fung_otutab <- column_to_rownames(new_fung_otutab, "Group.1")
+
+
+fung_seeds <- fung_clust_dat[fung_clust_dat$Type=="S",]
+
+old_fung_taxtab <- as.data.frame(tax_table(fung_otu_physeq))
+new_fung_taxtab <- old_fung_taxtab[rownames(old_fung_taxtab) %in% fung_seeds$QueryLabel,]
+rownames(new_fung_taxtab) <- new_fung_taxtab$denovo_OTU
+
+
+new_fung_physeq <- phyloseq(otu_table(new_fung_otutab, taxa_are_rows = TRUE),
+                            tax_table(as.matrix(new_fung_taxtab)),
+                            sample_data(fung_otu_physeq))
+
+
+```
+
+```{r}
+
+# ALSO, we want to remove moss and lichen because these may not reflect primary producers too well
+ps_no_mosslich_no_aer_fungcorp <- prune_samples(!(sample_data(new_fung_physeq)$sample_type %in% c("MossThallus", "LichenThallus", "Aerosol (non-saline)", "Fungus corpus", "Mushroom")), new_fung_physeq) # 1615 samples remain
+ps_no_mosslich_no_aer_fungcorp <- subset_taxa(ps_no_mosslich_no_aer_fungcorp, taxa_sums(ps_no_mosslich_no_aer_fungcorp) > 0) # 28277 OTUs remain
+
+ps <- ps_no_mosslich_no_aer_fungcorp
+
+# keep only the three habitats of interest
+ps_3habs <- subset_samples(ps, sample_data(ps)$habitat %in% c("Terrestrial", "Riverine", "Marine")) # 1494 samples remain
+ps_3habs <- prune_taxa(taxa_sums(ps_3habs) > 0, ps_3habs) # 28215 OTUs remain
+
+# count beach samples as riverine
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name=="Beach" & sample_data(ps_3habs)$sample_type=="WaterSaline",]$habitat = "Riverine"
+
+# recode upland marine samples as non-saline water and riverine - this is only an issue in ITS
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name %in% c("DrumRoad", "Ridge") & sample_data(ps_3habs)$empo_3=="Water(saline)",]$habitat = "Riverine"
+
+sample_data(ps_3habs)[sample_data(ps_3habs)$site_name %in% c("DrumRoad", "Ridge") & sample_data(ps_3habs)$empo_3=="Water(saline)",]$empo_3 = "Water (non-saline)"
+
+saveRDS(ps_3habs, "../intermediates/global/new_fung_physeq_sampletype_cull.rds")
+
+### go to 02_fung_bact_otu_matchup.Rmd to match up samples between loci!
+
+```
+
+
+
+## Bacteria
+
+```{r}
+# bacteria 
+
+# read in taxonomy file
+tax <- fread("../data/16s_data/annotations_100.taxonomy",
+             header = T,
+            sep = "\t")
+
+library(tidyr)
+# break up taxonomy info into separate columns
+tax <- tax %>%
+  separate(Taxonomy, 
+           c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+           sep = ";")
+
+#saveRDS(tax, "../intermediates/bact_otu_taxonomy_table.rds")
+
+
+
+abun <- fread(file = "../data/16s_data/abundance_table_100.shared",
+             drop = c("numOtus", "label", "Group"),
+             header = T)
+
+abun_names <- fread(file = "../data/16s_data/abundance_table_100.shared",
+                   select = "Group",
+                   colClasses = "character",
+                   header = T)
+
+abun <- abun[, Group := abun_names]
+
+# move group col to front
+abun <- abun %>% select(Group, everything())
+
+abun <- column_to_rownames(abun, "Group")
+
+# convert character cols to numeric
+#abun <- as.data.frame(sapply(abun,as.numeric))
+
+# transpose so ASVs are rows, samples are cols
+abun <- as.data.frame(t(abun)) # 355693 OTUs, 1732 samples
+
+
+### OTU time
+bact_clust_dat <- readRDS("../intermediates/other/bact_otu_cluster_info.rds")
+
+bact_clusters <- data.frame(row.names = bact_clust_dat$QueryLabel,
+                            cluster = bact_clust_dat$denovo_name)
+
+bact_new_otu_tax <- tax
+bact_new_otu_tax$denovo_OTU <- bact_clusters$cluster[match(bact_new_otu_tax$OTU,
+                                                                     rownames(bact_clusters))]
+
+
+# aggregate dataset by otu name
+
+old_bact_otutab <- abun
+old_bact_otutab$otu_name <- bact_clusters$cluster[match(rownames(old_bact_otutab), rownames(bact_clusters))]
+old_bact_otutab <- relocate(old_bact_otutab, otu_name)
+
+old_bact_otutab <- rownames_to_column(old_bact_otutab, "asv")
+
+bact_samp_names <- names(old_bact_otutab)[3:ncol(old_bact_otutab)]
+new_bact_otutab <- aggregate(old_bact_otutab[,bact_samp_names], by=list(old_bact_otutab$otu_name), sum)
+
+new_bact_otutab <- column_to_rownames(new_bact_otutab, "Group.1")
+
+
+bact_seeds <- bact_clust_dat[bact_clust_dat$Type=="S",]
+
+old_bact_taxtab <- bact_new_otu_tax
+new_bact_taxtab <- old_bact_taxtab[old_bact_taxtab$OTU %in% bact_seeds$QueryLabel,]
+rownames(new_bact_taxtab) <- new_bact_taxtab$denovo_OTU
+
+
+bact_meta <- read.csv("../data/16s_data/cleaned/mm_16s_hiseqs_metadata_table.csv")
+rownames(bact_meta) <- bact_meta$sequencing_id
+
+new_bact_physeq <- phyloseq(otu_table(new_bact_otutab, taxa_are_rows = TRUE),
+                            tax_table(as.matrix(new_bact_taxtab)),
+                            sample_data(bact_meta)) # 135891 OTUs, 1732 samples
+
+bact_only_physeq <- subset_taxa(new_bact_physeq, Kingdom=="Bacteria") # 130426 OTUs, 1732 samples
+
+
+# ALSO, we want to remove moss and lichen because these may not reflect primary producers too well
+bact_no_mosslich_no_aer_fungcorp <- prune_samples(!(sample_data(new_bact_physeq)$sample_type %in% c("MossThallus", "LichenThallus", "Air", "Mushroom")), bact_only_physeq) # 1659 samples remain
+bact_no_mosslich_no_aer_fungcorp <- subset_taxa(bact_no_mosslich_no_aer_fungcorp, taxa_sums(bact_no_mosslich_no_aer_fungcorp) > 0) # 128370 OTUs remain
+
+bact_no_mosslich_no_aer_fungcorp <- prune_samples(sample_data(bact_no_mosslich_no_aer_fungcorp)$sample_type!="Fungus corpus",bact_no_mosslich_no_aer_fungcorp) # 1659 samples remain
+bact_no_mosslich_no_aer_fungcorp <- subset_taxa(bact_no_mosslich_no_aer_fungcorp, taxa_sums(bact_no_mosslich_no_aer_fungcorp) > 0) # 128370 OTUs remain
+
+bact_ps <- bact_no_mosslich_no_aer_fungcorp
+
+# keep only the three habitats of interest
+bact_ps_3habs <- subset_samples(bact_ps, sample_data(bact_ps)$habitat %in% c("Terrestrial", "Riverine", "Marine")) # 1489 samples remain
+bact_ps_3habs <- prune_taxa(taxa_sums(bact_ps_3habs) > 0, bact_ps_3habs) # 118965 OTUs remain
+
+# count beach samples as riverine
+sample_data(bact_ps_3habs)[sample_data(bact_ps_3habs)$site_name=="Beach" & sample_data(bact_ps_3habs)$sample_type=="WaterSaline",]$habitat = "Riverine"
+
+saveRDS(bact_ps_3habs, "../intermediates/global/new_bact_physeq_sampletype_cull.rds")
+
+#remove aerosols and fungus corpus (empo3 categories)
+# bact_meta <- bact_meta[which(!(bact_meta$empo_3 %in% c("Aerosol (non-saline)", "Fungus corpus"))),]
+# 
+# abun <- abun[,colnames(abun) %in% bact_meta$sequencing_id] # 1575 samples remain
+# abun <- abun[rowSums(abun)>1,] # 110592 otus remain
+
+# saveRDS(abun, "../16s_data/kk_bact_otu_table_no_aer_no_fungcorp.rds")
+# saveRDS(bact_meta, "../16s_data/kk_bact_meta_no_aer_no_fungcorp.rds")
+
+
+### go to 02_fung_bact_otu_matchup.Rmd to match up samples between loci!
+```
+
+
+
+
+```{r}
+# decontam
+
+# summarize negative control data as logical variable for decontam function
+sample_data(new_fung_physeq)$is.neg <- sample_data(new_fung_physeq)$sample_type == "NegativeControl"
+its_decontamed <- isContaminant(new_fung_physeq, method = "prevalence", neg = "is.neg")
+table(its_decontamed$contaminant) ## 16 OTUs identified as contaminants
+
+xx <- rownames(its_decontamed[its_decontamed$contaminant==TRUE,])
+
+# more stringent criteria where all sequences more prevalent in negs than pos will be contaminants
+its_decontam_prev05 <- isContaminant(new_fung_physeq, method = "prevalence", neg = "is.neg", threshold = 0.5)
+table(its_decontam_prev05$contaminant) ## 37 OTUs identified as contaminants
+which_ones <- rownames(its_decontam_prev05[its_decontam_prev05$contaminant==TRUE,])
+
+# ps.pa <- transform_sample_counts(new_fung_physeq, function(abund) 1*(abund>0))
+# ps.pa.neg <- prune_samples(sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+# ps.pa.pos <- prune_samples(!sample_data(ps.pa)$sample_type == "NegativeControl", ps.pa)
+# # Make data.frame of prevalence in positive and negative samples
+# df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+#                       contaminant=its_decontam_prev05$contaminant)
+# ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+#   xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+# remove contaminants from ps
+# ps_noncontam <- prune_taxa(!its_decontam_prev05$contaminant, new_fung_physeq) # 37 OTUs removed, 29144 remain
+# ps_noncontam <- subset_samples(ps_noncontam, sample_sums(ps_noncontam) > 0) # 4 samples removed, 1673 remain
+
+#saveRDS(ps_noncontam, "../intermediates/decontaminated_fung_phyloseq_object_otus.rds")
+```
+

@@ -1,0 +1,77 @@
+---
+title: "12_phylo_distances"
+output: html_document
+date: "2023-05-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(Biostrings)
+```
+
+```{r}
+# read in data 
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+rownames(bact_meta) <- bact_meta$x_seq_id
+
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+```
+
+
+```{r}
+#bact_fasta <- readDNAStringSet("~/cmaiki_lts/kaciekaj/waimea/16s_data/bact_no_gaps_100.fasta")
+
+
+# bacteria
+bact_tax_table <- readRDS("../intermediates/other/bact_asv_taxonomy.rds")
+bact_otu_info <- readRDS("../intermediates/other/bact_otu_cluster_info.rds")
+
+bact_seeds <- bact_otu_info[bact_otu_info$Type=="S",]
+bact_seed_tax <- bact_tax_table[bact_tax_table$OTU %in% bact_seeds$QueryLabel,]
+bact_seed_tax$denovo_OTU <- bact_seeds$denovo_name[match(bact_seed_tax$OTU, bact_seeds$QueryLabel)]
+
+filt_bact_tax <- bact_seed_tax[bact_seed_tax$denovo_OTU %in% V(bact_net)$name,]
+rownames(filt_bact_tax) <- filt_bact_tax$denovo_OTU
+
+#filt_bact_seqs <- bact_fasta[filt_bact_tax$OTU]
+
+```
+
+```{r}
+library(ape)
+
+full_tree <- ape::read.tree("../data/16s_data/FastTree_100.tre")
+
+things_to_drop <- full_tree$tip.label[!(full_tree$tip.label %in% filt_bact_tax$OTU)]
+
+filt_tree <- drop.tip(full_tree, things_to_drop)
+
+filt_tree$tip.label <- filt_bact_tax$denovo_OTU[match(filt_bact_tax$OTU, filt_tree$tip.label)]
+
+
+pseq <- phyloseq(otu_table(bact_abun, taxa_are_rows = TRUE),
+                 sample_data(bact_meta),
+                 tax_table(as.matrix(filt_bact_tax)),
+                 filt_tree)
+
+saveRDS(pseq, "../intermediates/gradient/bact_physeq_with_tree.rds")
+
+library(doParallel)
+registerDoParallel(cores=15)
+uf <- UniFrac(pseq, parallel = TRUE)
+
+
+```
+
+
+
+
+
+
+

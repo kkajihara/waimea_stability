@@ -1,0 +1,558 @@
+---
+title: "12_Modules"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(phyloseq)
+library(patchwork)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# read in data
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+```
+
+```{r}
+
+# import metadata
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+cross_data_names <- c(rownames(fung_abun),rownames(bact_abun))
+
+# modularity data
+fung_module_data <- readRDS("../intermediates/global/fung_netcarto_results.rds")[[1]]
+             
+bact_module_data <- readRDS("../intermediates/global/bact_netcarto_results.rds")[[1]]
+             
+cross_module_data <- readRDS("../intermediates/global/cross_netcarto_results.rds")[[1]]
+```
+
+# Module z and c score plot (like Liu et al 2022)
+
+```{r}
+
+fung_mod_score <- ggplot(fung_module_data, aes(x=participation, y=connectivity)) +
+  geom_point() +
+  geom_vline(xintercept = 0.62) +
+  geom_hline(yintercept = 2.5) +
+  labs(title="ITS")
+
+
+bact_mod_score <- ggplot(bact_module_data, aes(x=participation, y=connectivity)) +
+  geom_point() +
+  geom_vline(xintercept = 0.62) +
+  geom_hline(yintercept = 2.5) +
+  labs(title="16S")
+
+
+cross_mod_score <- ggplot(cross_module_data, aes(x=participation, y=connectivity)) +
+  geom_point() +
+  geom_vline(xintercept = 0.62) +
+  geom_hline(yintercept = 2.5) +
+  labs(title="Cross-domain")
+
+library(patchwork)
+all_zc_plots <- fung_mod_score + bact_mod_score + cross_mod_score
+ggsave("../figures/global/zc_score_plots.jpg", width=15, height=5)
+
+
+```
+
+
+
+## Fungi Modules
+
+```{r}
+#fung_Modules <- cluster_walktrap(as.undirected(fung_net))
+
+# sizes(fung_Modules)
+# membership(fung_Modules)
+
+#V(fung_net)$Module <- fung_Modules$membership
+
+# rename module 0 
+fung_module_data$module[fung_module_data$module==0] <- max(fung_module_data$module) + 1
+
+# unconnected nodes are not included in the netcarto output
+fung_missing_otus <- rownames(fung_abun)[!(rownames(fung_abun) %in% fung_module_data$name)]
+
+fung_new_df <- data.frame(fung_missing_otus,
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)))
+names(fung_new_df) <- names(fung_module_data)
+
+all_fung_otu_mod <- rbind(fung_module_data, fung_new_df) # warning ok
+
+
+V(fung_net)$Module <- all_fung_otu_mod$module[match(V(fung_net)$name, all_fung_otu_mod$name)]
+
+
+
+# test <- sort(sizes(fung_Modules))
+# keep <- test[test>3]
+
+
+
+gg_fung_network <- ggnetwork(asNetwork(fung_net), layout = "fruchtermanreingold")
+# # reassign islands to Module "0"
+# gg_fung_network$Module <- ifelse(as.character(gg_fung_network$old_Module) %in% names(keep), gg_fung_network$old_Module, 0)
+
+# gg_fung_network$Module[gg_fung_network$Module==53] <- 37
+# gg_fung_network$Module[gg_fung_network$Module==57] <- 38
+# gg_fung_network$Module[gg_fung_network$Module==73] <- 42
+# gg_fung_network$Module[gg_fung_network$Module==76] <- 46
+# gg_fung_network$Module[gg_fung_network$Module==77] <- 47
+
+gg_fung_network$Module <- factor(gg_fung_network$Module)
+
+
+library(paletteer)
+# colrs <- paletteer_d("miscpalettes::excel")
+# colrs <- paletteer_d("vapoRwave::hyperBubble")
+# colrs <- paletteer_d("ggthemes::hc_default")
+
+#colrs <- paletteer_d("palettesForR::Caramel")
+# colrs <- paletteer_d("ggsci::default_igv")
+# colrs <- paletteer_d("khroma::hawaii", 28)
+# 
+# library(RColorBrewer)
+# n <- 28
+# qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+# col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+library(randomcoloR)
+# n <- 28
+# palette <- distinctColorPalette(n)
+# pie(rep(1, n), col=palette)
+
+col <- c(pals::kelly(), distinctColorPalette(6))
+
+set.seed(123)
+fung_gg <- ggplot(data = gg_fung_network,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(color = "grey50", linewidth=0.2) +
+   geom_nodes(aes(colour = Module), size = 1) +
+   scale_colour_manual(values = col) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)))
+
+ggsave("../figures/global/global/fung_network_modules_colored.png", width=7, height=8)
+ggsave("../figures/global/fung_netcarto_modules_colored.png", width=7, height=8)
+ 
+ 
+ 
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+
+
+ 
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+rownames(fung_meta) <- fung_meta$sequencing_id
+fung_meta$trophic[!(fung_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+# try out anova for seeing whether slices of pie vary by Module
+module_num = 1
+
+fung_module_otus <- unique(gg_fung_network$vertex.names[gg_fung_network$Module==module_num])
+
+  filt_abun <- fung_abun[rownames(fung_abun) %in% fung_module_otus,]
+  filt_abun <- filt_abun[,colSums(filt_abun)>0]
+  
+  filt_sd <- fung_meta[fung_meta$x_seq_id %in% names(filt_abun),]
+  
+  df <- filt_sd %>% group_by_at("empo_3") %>% summarise(count=length(sequencing_id))
+  df$pct <- df$count/sum(df$count)
+
+
+
+
+
+
+#hsize = 4
+
+make_pie <- function(module_num, ggnetwork_table, abun, meta, color_palette, var_to_filt_by, legend_title) {
+  fung_module_otus <- unique(ggnetwork_table$vertex.names[ggnetwork_table$Module==module_num])
+
+  filt_abun <- abun[rownames(abun) %in% fung_module_otus,]
+  filt_abun <- filt_abun[,colSums(filt_abun)>0]
+  
+  filt_sd <- meta[meta$x_seq_id %in% names(filt_abun),]
+  
+  df <- filt_sd %>% group_by_at(var_to_filt_by) %>% summarise(count=length(sequencing_id))
+  df$pct <- df$count/sum(df$count)
+
+  df <- df %>% mutate(x = hsize)
+  
+  
+  my_plot <- ggplot(df, aes(x = 2, y = count, fill = factor(!!sym(var_to_filt_by), levels = names(color_palette)))) +
+                geom_bar(stat = "identity") +
+                coord_polar(theta = "y", start = 200) +
+                xlim(c(0.2, 2.5)) +
+                theme_blank() +
+                labs(title=paste("Module", module_num), fill=var_to_filt_by) +
+                scale_fill_manual(values=color_palette, drop=FALSE) +
+                labs(fill = legend_title)
+  
+  return(my_plot)
+}
+
+
+
+empo_pal <- paletteer_d("miscpalettes::pastel", 14)
+names(empo_pal) <- unique(fung_meta$empo_3)
+
+troph_pal <- paletteer_d("IslamicArt::samarqand2", 3)
+names(troph_pal) <- unique(fung_meta$trophic)
+
+
+fung_module_pies_by_trophic = lapply(1:26,
+                                    make_pie,
+                                    ggnetwork_table = gg_fung_network,
+                                    abun = fung_abun,
+                                    meta = fung_meta,
+                                    color_palette = troph_pal,
+                                    var_to_filt_by = "trophic",
+                                    legend_title = "Trophic Level")
+
+fung_troph_pies <- wrap_plots(fung_module_pies_by_trophic) & theme(legend.position = "bottom")
+fung_troph_pies <- fung_troph_pies + plot_layout(guides = "collect")
+
+ggsave("../figures/global/fung_netcarto_module_trophic_pies.png", width=14, height=14)
+
+
+
+
+fung_module_pies_by_empo = lapply(1:26,
+                                  make_pie,
+                                  ggnetwork_table = gg_fung_network,
+                                  abun = fung_abun,
+                                  meta = fung_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+fung_empo_pies <- wrap_plots(fung_module_pies_by_empo) & theme(legend.position = "bottom")
+fung_empo_pies <- fung_empo_pies + plot_layout(guides = "collect")
+
+ggsave("../figures/global/fung_netcarto_module_empo_pies.png", width=14, height=14)
+
+
+```
+
+
+
+## Bacteria Modules
+
+```{r}
+# bact_Modules <- cluster_walktrap(as.undirected(bact_net))
+# 
+# sizes(bact_Modules)
+# membership(bact_Modules)
+# 
+# V(bact_net)$Module <- bact_Modules$membership
+# 
+# 
+# gg_bact_network <- ggnetwork(asNetwork(bact_net), layout = "fruchtermanreingold")
+# #gg_bact_network$domain <- ifelse(grepl("asv", gg_bact_network$vertex.names), "Fungi", "Bacteria")
+# gg_bact_network$Module <- factor(gg_bact_network$Module)
+bact_module_data$module[bact_module_data$module==0] <- max(bact_module_data$module) + 1
+
+V(bact_net)$Module <- bact_module_data$module[match(V(bact_net)$name, bact_module_data$name)]
+gg_bact_network <- ggnetwork(asNetwork(bact_net), layout = "fruchtermanreingold")
+gg_bact_network$Module <- factor(gg_bact_network$Module)
+
+
+library(paletteer)
+#colrs <- paletteer_d("miscpalettes::excel")
+#colrs <- paletteer_d("IslamicArt::samarqand2")
+# colrs <- paletteer_d("vapoRwave::hyperBubble")
+# colrs <- paletteer_d("ggthemes::hc_default")
+#colrs <- paletteer_d("calecopal::superbloom1")
+colrs <- paletteer_d("fishualize::Nemateleotris_magnifica")
+
+
+set.seed(123)
+bact_gg <- ggplot(data = gg_bact_network,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(color = "grey50", linewidth=0.1) +
+   geom_nodes(aes(colour = Module), size = 1) +
+   scale_colour_manual(values = colrs) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)))
+
+ggsave("../figures/global/bact_netcarto_modules_colored.png", width=9, height=8)
+ 
+ 
+ 
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+
+
+ 
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+rownames(bact_meta) <- bact_meta$sequencing_id
+bact_meta$trophic[!(bact_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+
+bact_module_pies_by_trophic = lapply(1:3,
+                                    make_pie,
+                                    ggnetwork_table = gg_bact_network,
+                                    abun = bact_abun,
+                                    meta = bact_meta,
+                                    color_palette = troph_pal,
+                                    var_to_filt_by = "trophic",
+                                    legend_title = "Trophic Level")
+
+bact_troph_pies <- wrap_plots(bact_module_pies_by_trophic) & theme(legend.position = "bottom")
+bact_troph_pies <- bact_troph_pies + plot_layout(guides = "collect")
+
+ggsave("../figures/global/bact_netcarto_module_trophic_pies.png", width=6, height=3)
+
+
+
+
+bact_module_pies_by_empo = lapply(1:3,
+                                  make_pie,
+                                  ggnetwork_table = gg_bact_network,
+                                  abun = bact_abun,
+                                  meta = bact_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+bact_empo_pies <- wrap_plots(bact_module_pies_by_empo) & theme(legend.position = "bottom")
+bact_empo_pies <- bact_empo_pies + plot_layout(guides = "collect")
+
+ggsave("../figures/global/bact_netcarto_module_empo_pies.png", width=11, height=3)
+
+
+```
+
+
+## Cross domain Modules
+
+```{r}
+# cross_Modules <- cluster_walktrap(as.undirected(cross_net))
+# 
+# sizes(cross_Modules)
+# membership(cross_Modules)
+# 
+# V(cross_net)$Module <- cross_Modules$membership
+
+cross_module_data$module[cross_module_data$module==0] <- max(cross_module_data$module) + 1
+
+
+
+V(cross_net)$Module <- cross_module_data$module[match(V(cross_net)$name, cross_module_data$name)]
+
+
+ 
+gg_cross_network <- ggnetwork(asNetwork(cross_net), layout = "fruchtermanreingold")
+gg_cross_network$Domain <- ifelse(grepl("fung", gg_cross_network$vertex.names), "Fungi", "Bacteria")
+gg_cross_network$Module <- factor(gg_cross_network$Module)
+
+
+library(paletteer)
+# colrs <- paletteer_d("miscpalettes::excel")
+# colrs <- paletteer_d("vapoRwave::hyperBubble")
+#colrs <- paletteer_d("ggthemes::hc_default")
+colrs <- paletteer_d("rockthemes::nodoubt")
+
+set.seed(123)
+cross_gg <- ggplot(data = gg_cross_network,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(color = "grey50", linewidth=0.2) +
+   geom_nodes(aes(colour = Module, shape = Domain), size = 2) +
+   scale_colour_manual(values = colrs) +
+   scale_shape_manual(values = c(19,17)) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)),
+          shape = guide_legend(override.aes = list(size=5)))
+ 
+ggsave("../figures/global/crossdom_netcarto_module_colored.png", width=14, height=10)
+ 
+ 
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+#fung_meta <- readRDS("../intermediates/fully_filtered_fungal_otu_metadata_matched_up.rds")
+
+cross_meta <- plyr::rbind.fill(fung_meta, bact_meta)
+cross_meta$trophic[!(cross_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+
+
+
+make_pie_cross <- function(module_num, ggnetwork_table, fung_abun, bact_abun, fung_meta, bact_meta, color_palette, var_to_filt_by, legend_title) {
+  cross_module_otus <- unique(ggnetwork_table$vertex.names[ggnetwork_table$Module==module_num])
+  
+  filt_abun_fung <- fung_abun[rownames(fung_abun) %in% cross_module_otus,]
+  filt_abun_fung <- filt_abun_fung[,colSums(filt_abun_fung)>0]
+  
+  filt_meta_fung <- fung_meta[fung_meta$x_seq_id %in% names(filt_abun_fung),]
+  
+  filt_abun_bact <- bact_abun[rownames(bact_abun) %in% cross_module_otus,]
+  filt_abun_bact <- filt_abun_bact[,colSums(filt_abun_bact)>0]
+  
+  filt_meta_bact <- bact_meta[bact_meta$x_seq_id %in% names(filt_abun_bact),]
+  
+  all_meta <- plyr::rbind.fill(filt_meta_fung, filt_meta_bact)
+  all_meta$trophic[!(all_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+  
+  #node_names <- c(rownames(filt_abun_fung), rownames(filt_abun_bact))
+  
+  df <- all_meta %>% dplyr::group_by_at(var_to_filt_by) %>% dplyr::summarise(count=length(x_seq_id))
+  df$pct <- df$count/sum(df$count)
+
+  #df <- df %>% mutate(x = hsize)
+  
+  my_plot <- ggplot(df, aes(x = 2, y = count, fill = factor(!!sym(var_to_filt_by), levels = names(color_palette)))) +
+                geom_bar(stat = "identity") +
+                coord_polar(theta = "y", start = 200) +
+                xlim(c(0.2, 2.5)) +
+                theme_blank() +
+                labs(title=paste("Module", module_num), fill=var_to_filt_by) +
+                scale_fill_manual(values=color_palette, drop=FALSE) +
+                labs(fill = legend_title)
+  return(my_plot)
+}
+
+
+cross_module_pies_by_trophic = lapply(1:3,
+                                    make_pie_cross,
+                                    ggnetwork_table = gg_cross_network,
+                                    fung_abun = fung_abun,
+                                    fung_meta = fung_meta,
+                                    bact_abun = bact_abun,
+                                    bact_meta = bact_meta,
+                                    color_palette = troph_pal,
+                                    var_to_filt_by = "trophic",
+                                    legend_title = "Trophic Level")
+
+
+cross_troph_pies <- wrap_plots(cross_module_pies_by_trophic) & theme(legend.position = "bottom") 
+cross_troph_pies <- cross_troph_pies + plot_layout(guides = "collect")
+
+
+ggsave("../figures/global/crossdom_netcarto_module_trophic_pies.png", width=6, height=3)
+
+
+cross_module_pies_by_empo = lapply(1:3,
+                                  make_pie_cross,
+                                  ggnetwork_table = gg_cross_network,
+                                  fung_abun = fung_abun,
+                                  fung_meta = fung_meta,
+                                  bact_abun = bact_abun,
+                                  bact_meta = bact_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+cross_empo_pies <- wrap_plots(cross_module_pies_by_empo) & theme(legend.position = "bottom")
+cross_empo_pies <- cross_empo_pies + plot_layout(guides = "collect")
+
+ggsave("../figures/global/crossdom_netcarto_module_empo_pies.png", width=11, height=3)
+
+
+
+one_plot <- cross_module_pies_by_empo[[1]] + 
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=18)) +
+   theme(title = element_text(size=18)) +
+   guides(fill = guide_legend(override.aes = list(size=10)))
+
+ggsave("../figures/global/example_crossdom_empo_pie.png", one_plot, width=12, height=10)
+
+```
+
+
+
+
+
+```{r}
+# code graveyard
+
+
+#m = modularity(g,membership(cluster_fast_greedy(g)))
+
+# cfg <- cluster_fast_greedy(as.undirected(g))
+# 
+# sizes(cfg)
+# 
+# membership(cfg)
+# 
+# plot(cfg, g, vertex.label=NA, vertex.size=5)
+
+# plot(g, vertex.color=colrs[V(g)$community],
+#      vertex.label=NA, vertex.size=5)
+
+
+
+
+# for (i in 1:7) {
+#   bact_module_otus <- unique(gg_bact_network$vertex.names[gg_bact_network$community==i])
+# 
+#   filt_abun <- bact_abun[rownames(bact_abun) %in% bact_module_otus,]
+#   filt_abun <- filt_abun[,colSums(filt_abun)>0]
+#   
+#   filt_sd <- bact_meta[bact_meta$sequencing_id %in% names(filt_abun),]
+#   
+#   df <- filt_sd %>% group_by(empo_3) %>% summarise(count=length(sequencing_id))
+#   df$pct <- df$count/sum(df$count)
+# 
+#   df <- df %>% mutate(x = hsize)
+#   bact_df_list[[i]] <- df
+#   
+#   
+#   my_plot <- ggplot(df, aes(x = hsize, y = count, fill = factor(empo_3, levels = all_empo3))) +
+#                 geom_col() +
+#                 coord_polar(theta = "y") +
+#                 xlim(c(0.2, hsize + 0.5)) +
+#                 theme_blank() +
+#                 labs(title=paste("Module", i), fill="EMPO3") +
+#                 scale_fill_manual(values=bact_palette, drop=FALSE)
+#   
+#   bact_pie_list[[i]] <- my_plot
+#   
+# }
+
+```
+
+
+
+
+

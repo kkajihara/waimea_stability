@@ -1,0 +1,290 @@
+---
+title: "10d_keystone_id_by_distributions"
+output: html_document
+date: "2023-06-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Identify keystones for each global network by finding outliers in the distribution of node degrees and betweeness centrality scores
+
+```{r}
+library(dplyr)
+library(brainGraph)
+library(igraph)
+library(vegan)
+library(scales)
+```
+
+
+```{r}
+
+# import data
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+# some data formatting
+fung_meta$trophic[!(fung_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+bact_meta$trophic[!(bact_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+fung_abun <- fung_abun[row.names(fung_abun)!="dummy",]
+bact_abun <- bact_abun[row.names(bact_abun)!="dummy",]
+
+
+# read in data = 20% prevalence global networks
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+
+```
+
+### Fungi
+
+```{r}
+fung_dat <- data.frame(OTU = V(fung_net)$name,
+                       degree = degree(fung_net),
+                       btwn_cent = betweenness(fung_net))
+
+
+fung_relabun <- decostand(t(fung_abun), "total")
+fung_relabun <- as.data.frame(t(fung_relabun))
+
+V(fung_net)$proportion <- apply(fung_abun, 1, function(c) sum(c!=0) / dim(fung_abun)[2])
+
+V(fung_net)$relabun <- apply(fung_relabun, 1, function(b) sum(b) / dim(fung_abun)[2])
+
+fung_dat$pct_samples <- V(fung_net)$proportion[match(V(fung_net)$name, fung_dat$OTU)]
+fung_dat$relabun <- V(fung_net)$relabun[match(V(fung_net)$name, fung_dat$OTU)]
+
+fung_dat <- arrange(fung_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+fung_dat$prevalence <- fung_dat$pct_samples * fung_dat$relabun
+
+
+
+fung_deg_mean <- mean(fung_dat$degree)
+fung_deg_sd <- sd(fung_dat$degree)
+
+fung_deg_outliers <- fung_dat[fung_dat$degree>(fung_deg_mean+(2*fung_deg_sd)),]
+
+
+
+fung_bc_mean <- mean(fung_dat$btwn_cent)
+fung_bc_sd <- sd(fung_dat$btwn_cent)
+
+fung_bc_outliers <- fung_dat[fung_dat$btwn_cent>(fung_bc_mean+(2*fung_bc_sd)),]
+
+
+fung_outs <- fung_bc_outliers$OTU[fung_bc_outliers$OTU %in% fung_deg_outliers$OTU]
+fung_out_dat <- fung_dat[fung_dat$OTU %in% unique(fung_outs),]
+fung_out_dat <- fung_out_dat[fung_out_dat$prevalence<0.001,]
+
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+
+fung.keystone.plot <- ggplot(fung_dat,aes(x=degree,y=log(btwn_cent + 1))) +
+    geom_point(aes(size=prevalence, 
+                   color=ifelse(OTU %in% fung_out_dat$OTU, "Keystone Candidate", "Other")),
+               position="jitter") +
+    ylab("Betweenness Centrality") + 
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    # scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+    #                    labels=trans_format("log10",math_format(10^.x))) +
+    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+    theme(text=element_text(colour="black",size=12)) + 
+    theme(axis.title=element_text(size=14)) +
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = guide_legend(override.aes = list(size=4))) +
+    theme(legend.key=element_blank()) +
+    #theme(legend.key.size = unit(.4, "cm"))+
+  scale_color_manual(values=c("orange", "black")) +
+    labs(y = "log(Betweenness Centraliity + 1)", color="Type", size="Prevalence", title="A) Fungi") 
+  
+
+ggsave("../figures/global/fung_keystone_id_plot.jpg", width=10, height=6)
+
+```
+
+
+### Bacteria
+
+```{r}
+bact_dat <- data.frame(OTU = V(bact_net)$name,
+                       degree = degree(bact_net),
+                       btwn_cent = betweenness(bact_net))
+
+bact_relabun <- decostand(t(bact_abun), "total")
+bact_relabun <- as.data.frame(t(bact_relabun))
+
+V(bact_net)$proportion <- apply(bact_abun, 1, function(c) sum(c!=0) / dim(bact_abun)[2])
+
+V(bact_net)$relabun <- apply(bact_relabun, 1, function(b) sum(b) / dim(bact_abun)[2])
+
+bact_dat$pct_samples <- V(bact_net)$proportion[match(V(bact_net)$name, bact_dat$OTU)]
+bact_dat$relabun <- V(bact_net)$relabun[match(V(bact_net)$name, bact_dat$OTU)]
+
+bact_dat <- arrange(bact_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+bact_dat$prevalence <- bact_dat$pct_samples * bact_dat$relabun
+
+
+
+bact_deg_mean <- mean(bact_dat$degree)
+bact_deg_sd <- sd(bact_dat$degree)
+
+bact_deg_outliers <- bact_dat[bact_dat$degree>(bact_deg_mean+(2*bact_deg_sd)),]
+
+
+bact_bc_mean <- mean(bact_dat$btwn_cent)
+bact_bc_sd <- sd(bact_dat$btwn_cent)
+
+bact_bc_outliers <- bact_dat[bact_dat$btwn_cent>(bact_bc_mean+(2*bact_bc_sd)),]
+
+
+bact_outs <- bact_bc_outliers$OTU[bact_bc_outliers$OTU %in% bact_deg_outliers$OTU]
+bact_out_dat <- bact_dat[bact_dat$OTU %in% bact_outs,]
+bact_out_dat <- bact_out_dat[bact_out_dat$prevalence<0.001,]
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+
+bact.keystone.plot <- ggplot(bact_dat,aes(x=degree,y=log(btwn_cent + 1))) +
+    geom_point(aes(size=prevalence, 
+                   color=ifelse(OTU %in% bact_out_dat$OTU, "Keystone Candidate", "Other")),
+               position="jitter") +
+    ylab("Betweenness Centrality") + 
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    # scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+    #                    labels=trans_format("log10",math_format(10^.x))) +
+    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+    theme(text=element_text(colour="black",size=12)) + 
+    theme(axis.title=element_text(size=14)) +
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = guide_legend(override.aes = list(size=4))) +
+    theme(legend.key=element_blank()) +
+    #theme(legend.key.size = unit(.4, "cm"))+
+  scale_color_manual(values=c("orange", "black")) +
+    labs(y = "log(Betweenness Centraliity + 1)", color="Type", size="Prevalence", title="B) Bacteria")
+
+ggsave("../figures/global/bact_keystone_id_plot.jpg", width=8, height=5)
+
+```
+
+### Cross-domain
+
+```{r}
+cross_dat <- data.frame(OTU = V(cross_net)$name,
+                       degree = degree(cross_net),
+                       btwn_cent = betweenness(cross_net))
+
+cross_abun <- readRDS("../intermediates/global/prev20_cross_domain_abundance_table.rds")
+
+cross_relabun <- decostand(t(cross_abun), "total")
+cross_relabun <- as.data.frame(t(cross_relabun))
+
+V(cross_net)$proportion <- apply(cross_abun, 1, function(c) sum(c!=0) / dim(cross_abun)[2])
+
+V(cross_net)$relabun <- apply(cross_relabun, 1, function(b) sum(b) / dim(cross_abun)[2])
+
+cross_dat$pct_samples <- V(cross_net)$proportion[match(V(cross_net)$name, cross_dat$OTU)]
+cross_dat$relabun <- V(cross_net)$relabun[match(V(cross_net)$name, cross_dat$OTU)]
+
+cross_dat <- arrange(cross_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+cross_dat$prevalence <- cross_dat$pct_samples * cross_dat$relabun
+
+
+
+cross_deg_mean <- mean(cross_dat$degree)
+cross_deg_sd <- sd(cross_dat$degree)
+
+cross_deg_outliers <- cross_dat[cross_dat$degree>(cross_deg_mean+(2*cross_deg_sd)),]
+
+
+cross_bc_mean <- mean(cross_dat$btwn_cent)
+cross_bc_sd <- sd(cross_dat$btwn_cent)
+
+cross_bc_outliers <- cross_dat[cross_dat$btwn_cent>(cross_bc_mean+(2*cross_bc_sd)),]
+
+
+cross_outs <- cross_bc_outliers$OTU[cross_bc_outliers$OTU %in% cross_deg_outliers$OTU]
+cross_out_dat <- cross_dat[cross_dat$OTU %in% cross_outs,]
+cross_out_dat <- cross_out_dat[cross_out_dat$prevalence<0.001,]
+
+# original Wall et al 2020 plot used log(Betweenness-Centrality normalized)
+
+cross.keystone.plot <- ggplot(cross_dat,aes(x=degree,y=log(btwn_cent + 1))) +
+    geom_point(aes(size=prevalence, 
+                   color=ifelse(OTU %in% cross_out_dat$OTU, "Keystone Candidate", "Other")),
+               position="jitter") +
+    ylab("Betweenness Centrality") + 
+    xlab("Node degree") +
+    #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+    # scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+    #                    labels=trans_format("log10",math_format(10^.x))) +
+    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+    theme(text=element_text(colour="black",size=12)) + 
+    theme(axis.title=element_text(size=14)) +
+    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=12)) +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+          panel.background=element_blank()) +
+    theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = guide_legend(override.aes = list(size=4))) +
+    theme(legend.key=element_blank()) +
+    #theme(legend.key.size = unit(.4, "cm"))+
+  scale_color_manual(values=c("orange", "black")) +
+    labs(y = "log(Betweenness Centraliity + 1)",color="Type", size="Prevalence", title="C) Cross-domain") +
+  scale_y_continuous(breaks = seq(3,15,3), limits=c(c(3,15))) +
+  theme(legend.position = "none")
+
+ggsave("../figures/global/cross_keystone_id_plot.jpg", width=8, height=5)
+```
+
+```{r}
+library(patchwork)
+
+all <- fung.keystone.plot + bact.keystone.plot + cross.keystone.plot & theme(legend.position = "right")
+all <- all + plot_layout(guides = "collect", ncol = 1) 
+
+ggsave("../figures/global/keystone_id_figs_for_affinity.pdf", height=18, width=11)
+
+```
+
+
+```{r}
+#save keystone data
+keystone_data <- list(fung_out_dat, bact_out_dat, cross_out_dat)
+saveRDS(keystone_data, "../intermediates/global/keystone_data_2sd.rds")
+
+
+data_for_plots <- list(fung_dat, bact_dat, cross_dat)
+saveRDS(data_for_plots, "../intermediates/global/keystone_plotting_data.rds")
+```

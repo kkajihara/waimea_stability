@@ -1,0 +1,353 @@
+---
+title: "10e_keystone_pies"
+output: html_document
+date: "2023-06-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Identify keystones for each global network by finding outliers in the distribution of node degrees and betweeness centrality scores
+
+```{r}
+library(dplyr)
+library(brainGraph)
+library(igraph)
+library(vegan)
+library(scales)
+```
+
+
+```{r}
+# keystone data
+keystone_data <- readRDS("../intermediates/global/keystone_data.rds")
+
+# import other data
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_datle_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_datle_matched_up.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+# some data formatting
+fung_meta$trophic[!(fung_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+bact_meta$trophic[!(bact_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+fung_abun <- fung_abun[row.names(fung_abun)!="dummy",]
+bact_abun <- bact_abun[row.names(bact_abun)!="dummy",]
+
+
+# read in data = 20% prevalence global networks
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+```
+
+```{r}
+# taxonomy
+
+# fungi
+fung_tax_table <- readRDS("../intermediates/taxonomy_table.rds")
+fung_otu_info <- readRDS("../intermediates/fung_otu_cluster_info.rds")
+
+fung_seeds <- fung_otu_info[fung_otu_info$Type=="S",]
+fung_seed_tax <- fung_tax_table[fung_tax_table$OTU %in% fung_seeds$QueryLabel,]
+fung_seed_tax$denovo_OTU <- fung_seeds$denovo_name[match(fung_seed_tax$OTU, fung_seeds$QueryLabel)]
+
+#saveRDS(fung_seed_tax, "../intermediates/global/fung_seed_taxonomy.rds")
+
+# bacteria
+bact_tax_table <- readRDS("../intermediates/bact_asv_taxonomy.rds")
+bact_otu_info <- readRDS("../intermediates/bact_otu_cluster_info.rds")
+
+bact_seeds <- bact_otu_info[bact_otu_info$Type=="S",]
+bact_seed_tax <- bact_tax_table[bact_tax_table$OTU %in% bact_seeds$QueryLabel,]
+bact_seed_tax$denovo_OTU <- bact_seeds$denovo_name[match(bact_seed_tax$OTU, bact_seeds$QueryLabel)]
+
+#saveRDS(bact_seed_tax, "../intermediates/global/bact_seed_taxonomy.rds")
+
+cross_tax <- rbind(fung_seed_tax, bact_seed_tax)
+
+#saveRDS(cross_tax, "../intermediates/global/cross_seed_taxonomy.rds")
+  
+```
+
+## Pie charts
+
+```{r}
+hsize = 4
+
+make_pie <- function(key_name, abun, meta, color_palette, var_to_filt_by) {
+
+  filt_abun <- abun[rownames(abun) == key_name,]
+  filt_abun <- filt_abun[,colSums(filt_abun)>0]
+  
+  filt_sd <- meta[meta$x_seq_id %in% names(filt_abun),]
+  
+  df <- filt_sd %>% dplyr::group_by_at(var_to_filt_by) %>% dplyr::summarise(count=length(x_seq_id))
+  df$pct <- df$count/sum(df$count)
+
+  df <- df %>% mutate(x = hsize)
+  
+  
+  my_plot <- ggplot(df, aes(x = hsize, y = count, fill = factor(!!sym(var_to_filt_by), levels = names(color_palette)))) +
+                geom_col() +
+                coord_polar(theta = "y") +
+                xlim(c(0.2, hsize + 0.5)) +
+                theme_blank() +
+                labs(title=paste(key_name), fill=var_to_filt_by) +
+                scale_fill_manual(values=color_palette, drop=FALSE)
+  
+  return(my_plot)
+}
+
+
+library(paletteer)
+
+empo_pal <- paletteer_d("miscpalettes::pastel", 14)
+names(empo_pal) <- unique(fung_meta$empo_3)
+
+troph_pal <- paletteer_d("IslamicArt::samarqand2", 3)
+names(troph_pal) <- unique(fung_meta$trophic)
+
+hab_pal <- paletteer_d("nbapalettes::pacers_foundation", 3)
+names(hab_pal) <- unique(fung_meta$habitat)
+
+```
+
+### Fungi 
+```{r}
+
+fung_key_names <- keystone_data[[1]]$OTU
+
+# how many samples
+fung_how_many_samps <- list()
+for (a_key in fung_key_names) {
+  filt_f_abun <- fung_abun[rownames(fung_abun)==a_key,]
+  filt_f_abun <- filt_f_abun[,colSums(filt_f_abun)>0]
+  
+  fung_how_many_samps[[a_key]] <- ncol(filt_f_abun)
+}
+
+fs_df <- as.data.frame(unlist(fung_how_many_samps))
+names(fs_df) <- "how_many_samps"
+
+f_key_tax <- fung_seed_tax[fung_seed_tax$denovo_OTU %in% fung_key_names,]
+f_key_tax <- f_key_tax[,3:9]
+
+fs_df <- cbind(fs_df, f_key_tax)
+
+saveRDS(fs_df, "../intermediates/global/fung_keys_how_many_samps.rds")
+
+fung_keys_empo <- lapply(fung_key_names,
+                         make_pie,
+                         abun = fung_abun,
+                         meta = fung_meta,
+                         color_palette = empo_pal,
+                         var_to_filt_by = "empo_3")
+
+fung_keys_hab <- lapply(fung_key_names,
+                         make_pie,
+                         abun = fung_abun,
+                         meta = fung_meta,
+                         color_palette = hab_pal,
+                         var_to_filt_by = "habitat")
+
+fung_keys_troph <- lapply(fung_key_names,
+                         make_pie,
+                         abun = fung_abun,
+                         meta = fung_meta,
+                         color_palette = troph_pal,
+                         var_to_filt_by = "trophic")
+
+
+
+## save plots
+ggarrange(plotlist=fung_keys_empo,
+          nrow = 2,
+          ncol = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/fung_keys_empo_pies.png", width = 10, height = 6)
+
+ggarrange(plotlist=fung_keys_troph,
+          nrow = 2,
+          ncol = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/fung_keys_troph_pies.png", width = 10, height = 6)
+
+
+ggarrange(plotlist=fung_keys_hab,
+          nrow = 2,
+          ncol = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/fung_keys_hab_pies.png", width = 10, height = 6)
+
+
+```
+
+### Bacteria 
+```{r}
+
+bact_key_names <- keystone_data[[2]]$OTU
+
+# how many samples
+bact_how_many_samps <- list()
+for (a_key in bact_key_names) {
+  filt_b_abun <- bact_abun[rownames(bact_abun)==a_key,]
+  filt_b_abun <- filt_b_abun[,colSums(filt_b_abun)>0]
+  
+  bact_how_many_samps[[a_key]] <- ncol(filt_b_abun)
+}
+
+bs_df <- as.data.frame(unlist(bact_how_many_samps))
+names(bs_df) <- "how_many_samps"
+
+b_key_tax <- bact_seed_tax[bact_seed_tax$denovo_OTU %in% bact_key_names,]
+b_key_tax <- b_key_tax[,3:9]
+
+bs_df <- cbind(bs_df, b_key_tax)
+
+saveRDS(bs_df, "../intermediates/global/bact_keys_how_many_samps.rds")
+
+
+bact_keys_empo <- lapply(bact_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = empo_pal,
+                         var_to_filt_by = "empo_3")
+
+bact_keys_hab <- lapply(bact_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = hab_pal,
+                         var_to_filt_by = "habitat")
+
+bact_keys_troph <- lapply(bact_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = troph_pal,
+                         var_to_filt_by = "trophic")
+
+
+## save plots
+ggarrange(plotlist=bact_keys_empo,
+          nrow = 3,
+          ncol = 9,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/bact_keys_empo_pies.png", width = 16, height = 9)
+
+ggarrange(plotlist=bact_keys_troph,
+          nrow = 3,
+          ncol = 9,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/bact_keys_troph_pies.png", width = 16, height = 9)
+
+
+ggarrange(plotlist=bact_keys_hab,
+          nrow = 3,
+          ncol = 9,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/bact_keys_hab_pies.png", width = 16, height = 9)
+
+
+```
+
+### Cross-domain 
+```{r}
+
+cross_key_names <- keystone_data[[3]]$OTU
+
+# how many samples
+cross_how_many_samps <- list()
+# using bact abun here (not cross) because the main keys are only bacteria
+for (a_key in cross_key_names) {
+  filt_f_abun <- bact_abun[rownames(bact_abun)==a_key,]
+  filt_f_abun <- filt_f_abun[,colSums(filt_f_abun)>0]
+  
+  cross_how_many_samps[[a_key]] <- ncol(filt_f_abun)
+}
+
+cs_df <- as.data.frame(unlist(cross_how_many_samps))
+names(cs_df) <- "how_many_samps"
+
+# can use bact taxonomy only bc only bact taxa are keystones
+c_key_tax <- bact_seed_tax[bact_seed_tax$denovo_OTU %in% cross_key_names,]
+c_key_tax <- c_key_tax[,3:9]
+
+cs_df <- cbind(cs_df, c_key_tax)
+
+saveRDS(cs_df, "../intermediates/global/cross_keys_how_many_samps.rds")
+
+
+cross_keys_empo <- lapply(cross_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = empo_pal,
+                         var_to_filt_by = "empo_3")
+
+cross_keys_hab <- lapply(cross_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = hab_pal,
+                         var_to_filt_by = "habitat")
+
+cross_keys_troph <- lapply(cross_key_names,
+                         make_pie,
+                         abun = bact_abun,
+                         meta = bact_meta,
+                         color_palette = troph_pal,
+                         var_to_filt_by = "trophic")
+
+
+## save plots
+ggarrange(plotlist=cross_keys_empo,
+          ncol = 8,
+          nrow = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/cross_keys_empo_pies.png", width = 14, height = 10)
+
+ggarrange(plotlist=cross_keys_troph,
+          ncol = 8,
+          nrow = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/cross_keys_troph_pies.png", width = 14, height = 10)
+
+
+ggarrange(plotlist=cross_keys_hab,
+          ncol = 8,
+          nrow = 4,
+          common.legend = TRUE,
+          legend = "bottom")
+ggsave("../figures/global/cross_keys_hab_pies.png", width = 14, height = 10)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

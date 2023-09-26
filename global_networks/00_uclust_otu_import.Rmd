@@ -1,0 +1,110 @@
+---
+title: "00_uclust_otu_import"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(data.table)
+library(stringr)
+```
+
+Info from uclust
+```{r}
+# uclust --input /tmp/UclustExactMatchFilterF3ObrN.fasta --id 0.97 --tmpdir /tmp --w 8 --stepwords 8 --usersort --maxaccepts 1 --stable_sort --maxrejects 8 --uc picked_otus_default/bact_no_gaps_100_clusters.uc
+# version=1.2.22
+# Tab-separated fields:
+# 1=Type, 2=ClusterNr, 3=SeqLength or ClusterSize, 4=PctId, 5=Strand, 6=QueryStart, 7=SeedStart, 8=Alignment, 9=QueryLabel, 10=TargetLabel
+# Record types (field 1): L=LibSeed, S=NewSeed, H=Hit, R=Reject, D=LibCluster, C=NewCluster, N=NoHit
+# For C and D types, PctId is average id with seed.
+# QueryStart and SeedStart are zero-based relative to start of sequence.
+# If minus strand, SeedStart is relative to reverse-complemented seed.
+```
+
+# Fungi
+
+```{r}
+
+# uclust import
+fung_uclust_table <- fread("../otus/qiime1/fung/picked_otus_default/fung_OTUs_100_clusters.uc", sep="\t")
+fung_cluster_dat = read.table("../otus/qiime1/fung/picked_otus_default/fung_OTUs_100_otus.txt", fill=T, 
+                              col.names=paste0('V', seq_len(100)))
+# remove empty columns
+emptycols <- sapply(fung_cluster_dat, function (k) all(is.na(k)))
+fung_cluster_dat <- fung_cluster_dat[!emptycols]
+
+# rename "denovo" otu
+fung_cluster_dat$V1 <- str_replace(fung_cluster_dat$V1, "denovo", "fung_otu")
+
+
+uclust_names <- c("Type", "ClusterNr", "SeqLength or ClusterSize", "PctId", "Strand",
+                          "QueryStart", "SeedStart", "Alignment", "QueryLabel", "TargetLabel")
+names(fung_uclust_table) <- uclust_names
+
+# remove "QiimeExactMatch." preceding taxon name
+fung_uclust_table$QueryLabel <- ifelse(fung_uclust_table$QueryLabel!="*",
+                                       str_extract(fung_uclust_table$QueryLabel, '\\b\\w+$'),
+                                       fung_uclust_table$QueryLabel)
+fung_uclust_table$TargetLabel <- ifelse(fung_uclust_table$TargetLabel!="*",
+                                        str_extract(fung_uclust_table$TargetLabel, '\\b\\w+$'),
+                                        fung_uclust_table$TargetLabel)
+
+
+fung_otu_dat <- fung_uclust_table[!duplicated(fung_uclust_table$QueryLabel),]
+# match denovo otu name with seed
+fung_otu_dat$denovo_name <- ifelse(fung_otu_dat$TargetLabel=="*",
+                                   fung_cluster_dat$V1[match(fung_otu_dat$QueryLabel, fung_cluster_dat$V2)],
+                                   fung_cluster_dat$V1[match(fung_otu_dat$TargetLabel, fung_cluster_dat$V2)])
+
+
+# fung_hits <- fung_uclust_table[fung_uclust_table$Type=="H",]
+# fung_seeds <- fung_uclust_table[fung_uclust_table$Type=="S",]
+# fung_clusts <- fung_uclust_table[fung_uclust_table$Type=="C",]
+
+
+saveRDS(fung_otu_dat, "../intermediates/fung_otu_cluster_info.rds")
+
+```
+
+
+```{r}
+# uclust import
+bact_uclust_table <- fread("../otus/qiime1/bact/picked_otus_default/bact_no_gaps_100_clusters.uc", sep="\t")
+bact_cluster_dat = read.delim("../otus/qiime1/bact/picked_otus_default/bact_no_gaps_100_otus.txt", header=F,
+                              fill=T, col.names=paste0('V', seq_len(300)))
+
+# remove empty columns
+b_emptycols <- sapply(bact_cluster_dat, function (k) all(is.na(k)))
+bact_cluster_dat <- bact_cluster_dat[!b_emptycols]
+
+# rename "denovo" otu
+bact_cluster_dat$V1 <- str_replace(bact_cluster_dat$V1, "denovo", "bact_otu")
+
+names(bact_uclust_table) <- uclust_names
+
+# remove "QiimeExactMatch." preceding taxon name
+bact_uclust_table$QueryLabel <- str_extract(bact_uclust_table$QueryLabel, '\\b\\w+$')
+bact_uclust_table$TargetLabel <- str_extract(bact_uclust_table$TargetLabel, '\\b\\w+$')
+
+
+bact_otu_dat <- bact_uclust_table[!duplicated(bact_uclust_table$QueryLabel),]
+# match denovo otu name with seed
+bact_otu_dat$denovo_name <- ifelse(is.na(bact_otu_dat$TargetLabel),
+                                   bact_cluster_dat$V1[match(bact_otu_dat$QueryLabel, bact_cluster_dat$V2)],
+                                   bact_cluster_dat$V1[match(bact_otu_dat$TargetLabel, bact_cluster_dat$V2)])
+
+
+# bact_hits <- bact_uclust_table[bact_uclust_table$Type=="H",] # all the ASVs belonging to a cluster (OTU)
+# bact_seeds <- bact_uclust_table[bact_uclust_table$Type=="S",] # query label is the seed asv of the OTU
+# bact_clusts <- bact_uclust_table[bact_uclust_table$Type=="C",] # same as above, just w diff info in earlier cols
+
+saveRDS(bact_otu_dat, "../intermediates/bact_otu_cluster_info.rds")
+
+```
+
+
+

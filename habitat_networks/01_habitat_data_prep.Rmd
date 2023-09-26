@@ -1,0 +1,167 @@
+---
+title: "01_habitat_data_prep"
+output: html_document
+date: "2023-06-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(reshape2)
+```
+
+```{r}
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+
+consumers <- c("Omnivore", "Herbivore", "Detritivore", "Carnivore")
+fung_meta$trophic[fung_meta$trophic %in% consumers] <- "Consumer"
+bact_meta$trophic[bact_meta$trophic %in% consumers] <- "Consumer"
+```
+
+```{r}
+# convert x_seq_id in names of otu tables to sample_id so can match up between loci
+names(fung_abun) <- fung_meta$sample_id[match(names(fung_abun), fung_meta$x_seq_id)]
+names(bact_abun) <- bact_meta$sample_id[match(names(bact_abun), bact_meta$x_seq_id)]
+```
+
+
+Goal: Count how many empo3 categories there are in each habitat. We want to standardize each habitat by number of categories. Will have to get rid of some in the ones that have more
+
+```{r}
+habs <- unique(fung_meta$habitat)
+fung_met_by_hab <- list()
+
+for (a_hab in habs) {
+  sub_met <- fung_meta[fung_meta$habitat==a_hab,]
+  fung_met_by_hab[[a_hab]] <- sub_met
+}
+
+fung_met_by_hab[[1]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+fung_met_by_hab[[2]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+fung_met_by_hab[[3]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+
+# put all in a table
+a <- fung_met_by_hab[[1]] %>% dplyr::group_by(empo_3) %>% summarise(count=length(x_seq_id))
+b <- fung_met_by_hab[[2]] %>% dplyr::group_by(empo_3) %>% summarise(count=length(x_seq_id))
+c <- fung_met_by_hab[[3]] %>% dplyr::group_by(empo_3) %>% summarise(count=length(x_seq_id))
+
+a$habitat <- habs[[1]]
+b$habitat <- habs[[2]]
+c$habitat <- habs[[3]]
+
+together <- rbind(a,b,c)
+samp_tab <- dcast(together, empo_3 ~ habitat, value.var = "count")
+
+```
+
+Riverine and Marine have 5 empo_3 categories each. Terrestrial has 8.
+
+General ratio of Consumer : PrimaryProducer : Environmental in Riverine/Marine = 1:1:3
+
+### ITS
+
+```{r}
+# in terrestrial, going to keep: animal corpus, plant corpus, surface (non-saline), plant rhizosphere, and soil (non-surface)
+# the lowest number of technical replicates an empo_3 category has across all habitats is 17
+# from categories with more reps than 17, randomly select 17 samples
+fung_terr_met <- fung_met_by_hab[["Terrestrial"]]
+fung_terr_met <- fung_terr_met[fung_terr_met$empo_3 %in% c("Animal corpus", "Plant corpus", "Surface (non-saline)", "Plant rhizosphere", "Soil (non-saline)"),]
+
+fung_met_by_hab[["Terrestrial"]] <- fung_terr_met
+
+
+
+empo_downsample <- function(meta) {
+  emps <- unique(meta$empo_3)
+  
+  tmp <- list()
+  for (i in 1:length(emps)) {
+    sub_met <- meta[meta$empo_3==emps[[i]],]
+    
+    set.seed(123)
+    df <- sub_met[sample(nrow(sub_met), 17),]
+    
+    tmp[[i]] <- df
+    
+  }
+  
+  full_df <- do.call("rbind", tmp)
+  
+  return(full_df)
+  
+}
+
+fung_downsampled_metas <- lapply(fung_met_by_hab, empo_downsample)
+
+
+# subset abundance tables by habitat, then by the samples in each metadata table
+fung_downsampled_abuns <- list()
+
+for (i in 1:length(fung_downsampled_metas)) {
+  sub_abun <- fung_abun[,names(fung_abun) %in% fung_downsampled_metas[[i]]$sample_id]
+  sub_abun <- sub_abun[rowSums(sub_abun)>0,]
+  
+  fung_downsampled_abuns[[i]] <- sub_abun
+}
+
+saveRDS(fung_downsampled_abuns, "../intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+
+```
+
+### 16S
+
+```{r}
+bact_met_by_hab <- list()
+
+for (a_hab in habs) {
+  sub_met <- bact_meta[bact_meta$habitat==a_hab,]
+  bact_met_by_hab[[a_hab]] <- sub_met
+}
+
+# bact_met_by_hab[[1]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+# bact_met_by_hab[[2]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+# bact_met_by_hab[[3]] %>% dplyr::group_by(empo_3, trophic) %>% summarise(count=length(x_seq_id))
+
+# in terrestrial, going to keep: animal corpus, plant corpus, surface (non-saline), plant rhizosphere, and soil (non-surface)
+# the lowest number of technical replicates an empo_3 category has across all habitats is 17
+# from categories with more reps than 17, randomly select 17 samples
+bact_terr_met <- bact_met_by_hab[["Terrestrial"]]
+bact_terr_met <- bact_terr_met[bact_terr_met$empo_3 %in% c("Animal corpus", "Plant corpus", "Surface (non-saline)", "Plant rhizosphere", "Soil (non-saline)"),]
+
+bact_met_by_hab[["Terrestrial"]] <- bact_terr_met
+
+# see previous chunk for function empo_downsample
+bact_downsampled_metas <- lapply(bact_met_by_hab, empo_downsample)
+
+
+# subset abundance tables by habitat, then by the samples in each metadata table
+bact_downsampled_abuns <- list()
+
+for (i in 1:length(bact_downsampled_metas)) {
+  sub_abun <- bact_abun[,names(bact_abun) %in% names(fung_downsampled_abuns[[i]])]
+  sub_abun <- sub_abun[rowSums(sub_abun)>0,]
+  
+  # order cols same as fung
+  sub_abun <- sub_abun[names(fung_downsampled_abuns[[i]])]
+  
+  bact_downsampled_abuns[[i]] <- sub_abun
+}
+
+saveRDS(bact_downsampled_abuns, "../intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+
+```
+
+
+
+
+
+
+

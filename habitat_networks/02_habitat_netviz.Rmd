@@ -1,0 +1,233 @@
+---
+title: "02_habitat_netviz"
+output: html_document
+date: "2023-06-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(SpiecEasi)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(ggpubr)
+
+options(bitmapType='cairo')
+
+```
+
+Get metadata and otu names for each plot network
+
+```{r}
+fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+```
+
+## ITS
+
+```{r}
+
+fung_habitat_networks <- readRDS("../networks/prev20/habitat/outputs/fung_habitat_networks.rds")
+
+fung_vertex_names <- lapply(fung_data, rownames)
+
+lapply(fung_habitat_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+fung_igraphs <- list()
+
+for (i in 1:length(fung_habitat_networks)) {
+  ig <- adj2igraph(getRefit(fung_habitat_networks[[i]]),
+                   vertex.attr=list(name=fung_vertex_names[[i]]))
+  
+  fung_igraphs[[i]] <- ig
+}
+
+
+fung_no_dummy <- lapply(fung_igraphs, function(x) delete_vertices(x, "dummy"))
+
+saveRDS(fung_no_dummy, "../intermediates/habitat/fung_habitat_igraphs.rds")
+
+
+## visualization
+fung_no_dummy <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+
+habs <- unique(fung_meta$habitat)
+
+
+fung_net_plots <- list()
+
+for (i in 1:length(fung_no_dummy)) {
+  set.seed(123)
+  
+  gg <- ggplot(ggnetwork(asNetwork(fung_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(color = "#1F78B4") +
+  theme_blank() +
+  #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+  labs(title = habs[i])
+  
+  fung_net_plots[[i]] <- gg
+}
+
+names(fung_net_plots) <- habs
+fung_net_plots <- fung_net_plots[c("Marine", "Riverine", "Terrestrial")]
+
+all_fung <- ggarrange(plotlist = fung_net_plots,
+                      ncol = 3,
+                      nrow = 1) + bgcolor("white")
+
+ggsave("../figures/finals/habitat/fung_network_plots.pdf", all_fung, width=18.5, height=6)
+
+```
+
+## 16S
+
+```{r}
+
+bact_habitat_networks <- readRDS("../networks/prev20/habitat/outputs/bact_habitat_networks.rds")
+
+bact_vertex_names <- lapply(bact_data, rownames)
+
+lapply(bact_habitat_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+bact_igraphs <- list()
+
+for (i in 1:length(bact_habitat_networks)) {
+  ig <- adj2igraph(getRefit(bact_habitat_networks[[i]]),
+                   vertex.attr=list(name=bact_vertex_names[[i]]))
+  
+  bact_igraphs[[i]] <- ig
+}
+
+
+bact_no_dummy <- lapply(bact_igraphs, function(x) delete_vertices(x, "dummy"))
+
+saveRDS(bact_no_dummy, "../intermediates/habitat/bact_habitat_igraphs.rds")
+
+
+## visualization
+
+habs <- unique(bact_meta$habitat)
+
+
+bact_net_plots <- list()
+
+for (i in 1:length(bact_no_dummy)) {
+  set.seed(123)
+  
+  gg <- ggplot(ggnetwork(asNetwork(bact_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(color = "#A6CEE3") +
+  theme_blank() +
+  #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+  labs(title = habs[i])
+  
+  bact_net_plots[[i]] <- gg
+}
+
+
+names(bact_net_plots) <- habs
+bact_net_plots <- bact_net_plots[c("Marine", "Riverine", "Terrestrial")]
+
+all_bact <- ggarrange(plotlist = bact_net_plots,
+                      ncol = 3,
+                      nrow = 1) + bgcolor("white")
+
+ggsave("../figures/finals/habitat/bact_network_plots.pdf", all_bact, width=18.5, height=6)
+
+```
+
+## Cross-domain
+
+```{r}
+
+cross_habitat_networks <- readRDS("../networks/prev20/habitat/outputs/cross_habitat_networks.rds")
+
+#readRDS("../networks/prev20/habitat/outputs/cross_habitat_networks.rds")
+
+cross_vertex_names <- list()
+
+for (i in 1:3) {
+  cross_names <- c(fung_vertex_names[[i]], bact_vertex_names[[i]])
+  cross_vertex_names[[i]] <- cross_names
+}
+
+lapply(cross_habitat_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+cross_igraphs <- list()
+
+for (i in 1:length(cross_habitat_networks)) {
+  ig <- adj2igraph(getRefit(cross_habitat_networks[[i]]),
+                   vertex.attr=list(name=cross_vertex_names[[i]]))
+  
+  cross_igraphs[[i]] <- ig
+}
+
+
+cross_no_dummy <- lapply(cross_igraphs, function(x) delete_vertices(x, "dummy"))
+cross_no_dummy <- lapply(cross_no_dummy, function(x) delete_vertices(x, "dummy"))
+
+
+saveRDS(cross_no_dummy, "../intermediates/habitat/cross_habitat_igraphs.rds")
+
+
+## visualization
+cross_net_plots <- list()
+
+for (i in 1:length(cross_no_dummy)) {
+  set.seed(123)
+  
+  dat <- ggnetwork(asNetwork(cross_no_dummy[[i]]), layout = "fruchtermanreingold")
+  dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+
+  
+  gg <- ggplot(dat, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(aes(color = domain)) +
+  theme_blank() +
+  scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4" +
+    guides(color = guide_legend(override.aes = list(size=5))) +
+  labs(title = paste("Habitat:", habs[i]), color = "Domain")
+  
+  cross_net_plots[[i]] <- gg
+}
+
+
+names(cross_net_plots) <- habs
+cross_net_plots <- cross_net_plots[c("Marine", "Riverine", "Terrestrial")]
+
+all_cross <- ggarrange(plotlist = cross_net_plots,
+                      ncol = 3,
+                      nrow = 1,
+                      common.legend = TRUE,
+                      legend = "bottom") + bgcolor("white")
+
+ggsave("../figures/finals/habitat/cross_network_plots.pdf",all_cross, width=21, height=6)
+
+```
+
+
+
+

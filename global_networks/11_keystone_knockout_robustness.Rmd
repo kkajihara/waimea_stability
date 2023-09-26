@@ -1,0 +1,185 @@
+---
+title: "11_keystone_knockout_robustness"
+output: html_document
+date: "2023-06-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(igraph)
+library(brainGraph)
+library(ggplot2)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# read in data
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+# keystone data
+keystone_data <- readRDS("../intermediates/global/keystone_data_2sd.rds")
+```
+
+# Robustness test (remove habitat specialists)
+
+## ITS
+
+```{r}
+# read in data (igraph)
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+# make a new igraph object after removing unwanted nodes
+fung_net_no_keystone <- delete_vertices(fung_net, keystone_data[[1]]$OTU)
+
+
+# Calculate betweeness removal robustness
+fung_full_bc_robust <- robustness(fung_net, type = "vertex", "btwn.cent")
+fung_full_bc_robust$Type <- "Full"
+
+fung_no_keystone_bc_robust <- robustness(fung_net_no_keystone, type = "vertex", "btwn.cent")
+fung_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+fung_bc_rob_data <- rbind(fung_full_bc_robust, fung_no_keystone_bc_robust)
+
+
+fung_key_plot <- ggplot(fung_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Fungi,", nrow(keystone_data[[1]]), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+
+```
+
+## 16S
+
+```{r}
+
+bact_net_no_keystone <- delete_vertices(bact_net, keystone_data[[2]]$OTU)
+
+
+# Calculate betweeness removal robustness
+bact_full_bc_robust <- robustness(bact_net, type = "vertex", "btwn.cent")
+bact_full_bc_robust$Type <- "Full"
+
+bact_no_keystone_bc_robust <- robustness(bact_net_no_keystone, type = "vertex", "btwn.cent")
+bact_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+bact_bc_rob_data <- rbind(bact_full_bc_robust, bact_no_keystone_bc_robust)
+
+
+bact_key_plot <- ggplot(bact_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Bacteria,", nrow(keystone_data[[2]]), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+```
+
+## Cross-domain
+
+```{r}
+# read in igraph object 
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+# make new igraph object, removing unwanted nodes
+cross_net_no_keystone <- delete_vertices(cross_net, keystone_data[[3]]$OTU)
+
+
+# Calculate betweeness removal robustness
+cross_full_bc_robust <- robustness(cross_net, type = "vertex", "btwn.cent")
+# predictor variable
+cross_full_bc_robust$Type <- "Full"
+
+cross_no_keystone_bc_robust <- robustness(cross_net_no_keystone, type = "vertex", "btwn.cent")
+cross_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+cross_bc_rob_data <- rbind(cross_full_bc_robust, cross_no_keystone_bc_robust)
+
+
+cross_key_plot <- ggplot(cross_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Cross-domain,", nrow(keystone_data[[3]]), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+```
+
+```{r}
+# save data
+all_dat <- list(fung_bc_rob_data, bact_bc_rob_data, cross_bc_rob_data)
+saveRDS(all_dat,"../intermediates/global/robustness_data_keystone_knockout.rds")
+
+all_dat <- readRDS("../intermediates/global/robustness_data_keystone_knockout.rds")
+fung_bc_rob_data <- all_dat[[1]]
+bact_bc_rob_data <- all_dat[[2]]
+cross_bc_rob_data <- all_dat[[3]]
+```
+
+
+```{r}
+library(ggpubr)
+
+# plots <- ggarrange(fung_key_plot, bact_key_plot, cross_key_plot, nrow = 1, common.legend = TRUE, legend = "bottom") + bgcolor("white")
+
+
+library(patchwork)
+
+plots <- fung_key_plot + bact_key_plot + cross_key_plot & theme(legend.position = "bottom")
+#plots <- plots & xlab(NULL) & ylab(NULL)
+plots <- plots + plot_layout(guides = "collect") 
+
+
+ggsave("../figures/global/test_keystone_knockout_robustness_for_affinity.pdf", width=17, height=6, device=cairo_pdf)
+```
+
+

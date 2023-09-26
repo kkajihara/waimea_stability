@@ -1,0 +1,65 @@
+---
+title: "05b_habitat_phydist_regress"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(plyr)
+```
+
+Goal: Check that PD isn’t just an artifact of species richness, regress richness over PD for all samples and plots
+
+```{r}
+# load data
+bact_data <- readRDS("../intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+
+full_bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+#plots <- unique(full_bact_meta$site_name[full_bact_meta$habitat=="Terrestrial"])
+
+mpd_data <- readRDS("../intermediates/habitat/picante_by_sample_habitat_results.rds")
+
+comm_otu_table <- readRDS("../intermediates/habitat/inputs_for_picante_by_sample.rds")
+
+```
+
+```{r}
+
+transposed_data <- lapply(bact_data, function(x) as.data.frame(t(x)))
+
+samp_names <- c(unlist(lapply(bact_data, colnames)))
+
+maybe <- do.call("rbind.fill", transposed_data)
+rownames(maybe) <- samp_names
+
+sum(samp_names == rownames(mpd_data))
+
+
+dat_for_gg <- data.frame(richness = rowSums(maybe, na.rm=TRUE),
+                         mpd = mpd_data$mpd.obs.z)
+dat_for_gg$log_val <- log(dat_for_gg$richness)
+
+
+test_lm <- lm(rowSums(maybe, na.rm=TRUE) ~ mpd_data$mpd.obs.z)
+
+test_pl <- ggplot(dat_for_gg, aes(y=log_val, x = mpd)) +
+  geom_point() +
+  ggtitle("Habitat Sample Richness vs MPD") +
+  #geom_smooth(method = "lm", se = FALSE) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  scale_y_continuous(breaks = seq(8, 14, 2), limits = c(c(8, 14))) +
+  labs(subtitle = paste("Linear regression results:", "R2 =", round(summary(test_lm)$r.squared, 3), "P < 0.001"), x = "Mean Phylogenetic Distance Effect Scores", y = "log(Richness by Sample)")
+
+ggsave("../figures/finals/habitat/hab_richness_vs_mpd_regression_plot.pdf", width=5, height=4)
+
+```
+
+
+

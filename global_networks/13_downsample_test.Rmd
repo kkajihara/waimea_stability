@@ -1,0 +1,1001 @@
+---
+title: "13_downsample_test"
+output: html_document
+date: "2023-07-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(brainGraph)
+library(patchwork)
+library(network)
+library(SpiecEasi)
+
+library(dplyr)
+library(tibble)
+library(pbmcapply)
+library(reshape2)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# read in data
+fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+```
+
+```{r}
+# fung_downsamp_se <- readRDS("../networks/prev20/outputs/downsampled_fung_prev20_mb_thresh05_with_dummy.rds")
+# 
+# fung_ds_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+# 
+# fung_ds_ig <- adj2igraph(getRefit(fung_downsamp_se), vertex.attr = list(name=rownames(fung_ds_abun)))
+# 
+# fung_ds_no_dummy <- delete_vertices(fung_ds_ig, "dummy")
+# 
+# saveRDS(fung_ds_no_dummy, "../intermediates/global/fung_downsampled_igraph.rds")
+# 
+# 
+# bact_downsamp_se <- readRDS("../networks/prev20/outputs/downsampled_bact_prev20_mb_thresh05_with_dummy.rds")
+# 
+# bact_ds_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+# 
+# bact_ds_ig <- adj2igraph(getRefit(bact_downsamp_se), vertex.attr = list(name=rownames(bact_ds_abun)))
+# 
+# bact_ds_no_dummy <- delete_vertices(bact_ds_ig, "dummy")
+# 
+# saveRDS(bact_ds_no_dummy, "../intermediates/global/bact_downsampled_igraph.rds")
+# 
+# 
+# cross_downsamp_se <- readRDS("../networks/prev20/outputs/downsampled_crossdom_prev20_mb_thresh05_with_dummy.rds")
+# 
+# cross_vert_names <- c(rownames(fung_ds_abun), rownames(bact_ds_abun))
+# 
+# cross_ds_ig <- adj2igraph(getRefit(cross_downsamp_se), vertex.attr = list(name=cross_vert_names))
+# 
+# cross_ds_no_dummy <- delete_vertices(cross_ds_ig, "dummy")
+# cross_ds_no_dummy <- delete_vertices(cross_ds_no_dummy, "dummy")
+# 
+# saveRDS(cross_ds_no_dummy, "../intermediates/global/cross_downsampled_igraph.rds")
+# 
+# 
+# 
+# filt_fung_net <- fung_ds_no_dummy
+# filt_bact_net <- bact_ds_no_dummy
+# filt_cross_net <- cross_ds_no_dummy
+```
+
+
+
+```{r}
+
+# import metadata
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_dummy <- fung_abun[rownames(fung_abun)=="dummy",]
+bact_dummy <- bact_abun[rownames(bact_abun)=="dummy",]
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+cross_data_names <- c(rownames(fung_abun),rownames(bact_abun))
+
+```
+
+
+```{r}
+habs <- c("Terrestrial","Riverine", "Marine")
+
+hab_subset <- function(otu_table, meta_table) {
+  habs <- unique(meta_table$habitat)
+  
+  hab_list <- list()
+  
+  for (a_hab in habs) {
+    sub_met <- meta_table[which(meta_table$habitat==a_hab),]
+    
+    sub_hab_abun <- otu_table[,which(names(otu_table) %in% sub_met$x_seq_id)]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    sub_hab_abun <- sub_hab_abun[which(rowSums(sub_hab_abun) > 0),]
+    sub_hab_abun <- data.frame(sub_hab_abun)
+    
+    hab_list[[a_hab]] <- sub_hab_abun
+    
+  }
+  
+  return(hab_list)
+}
+
+fung_otus_by_hab <- hab_subset(fung_abun, fung_meta)
+
+
+take_top <- function (otu_table) {
+  otus <- data.frame(OTU = rownames(otu_table),
+                     sum = rowSums(otu_table))
+  
+  otus <- otus[order(otus$sum, decreasing=TRUE),]
+  
+  top_400 <- otus[1:400,]
+  
+  tab <- otu_table[rownames(otu_table) %in% top_400$OTU,]
+  tab <- tab[,colSums(tab) > 0]
+  
+  return(tab)
+}
+ 
+
+fung_top400 <- lapply(fung_otus_by_hab, take_top)
+
+fung_top400 <- lapply(fung_top400, function(x) as.data.frame(t(x)))
+
+fung_rnames <- lapply(fung_top400, rownames)
+
+all_fung_dat <- do.call("rbind.fill", fung_top400)
+rownames(all_fung_dat) <- unlist(fung_rnames)
+
+all_fung_dat[is.na(all_fung_dat)] <- 0
+
+#saveRDS(all_fung_dat, "../intermediates/global/downsampled_fung_otu_table.rds")
+
+```
+
+```{r}
+
+bact_otus_by_hab <- hab_subset(bact_abun, bact_meta)
+
+bact_top400 <- lapply(bact_otus_by_hab, take_top)
+
+bact_top400 <- lapply(bact_top400, function(x) as.data.frame(t(x)))
+
+bact_rnames <- lapply(bact_top400, rownames)
+
+all_bact_dat <- do.call("rbind.fill", bact_top400)
+rownames(all_bact_dat) <- unlist(bact_rnames)
+
+all_bact_dat[is.na(all_bact_dat)] <- 0
+
+#saveRDS(all_bact_dat, "../intermediates/global/downsampled_bact_otu_table.rds")
+
+```
+
+# match up samples
+```{r}
+bact_df <- data.frame(seq_id <- bact_meta$sequencing_id,
+                      x_seq_id <- bact_meta$x_seq_id,
+                      sample <- bact_meta$sample_id)
+names(bact_df) <- c("seq_id", "x_seq_id", "sample")
+
+fung_df <- data.frame(seq_id <- fung_meta$sequencing_id,
+                      x_seq_id <- fung_meta$x_seq_id,
+                      sample <- fung_meta$sample_id)
+names(fung_df) <- c("seq_id", "x_seq_id", "sample")
+
+
+f_abun_test <- as.data.frame(t(all_fung_dat))
+names(f_abun_test) <- as.character(fung_df$sample[match(names(f_abun_test), fung_df$x_seq_id)])
+f_abun_test <- f_abun_test[, order(names(f_abun_test))]
+
+names(fung_dummy) <- as.character(fung_df$sample[match(names(fung_dummy), fung_df$x_seq_id)])
+fung_dummy <- fung_dummy[,colnames(fung_dummy) %in% colnames(f_abun_test)]
+fung_dummy <- fung_dummy[, order(names(fung_dummy))]
+
+f_abun <- rbind(f_abun_test, fung_dummy)
+
+
+b_abun_test <- as.data.frame(t(all_bact_dat))
+names(b_abun_test) <- as.character(bact_df$sample[match(names(b_abun_test), bact_df$x_seq_id)])
+b_abun_test <- b_abun_test[,colnames(b_abun_test) %in% colnames(f_abun_test)]
+b_abun_test <- b_abun_test[, order(names(b_abun_test))]
+
+names(bact_dummy) <- as.character(bact_df$sample[match(names(bact_dummy), bact_df$x_seq_id)])
+bact_dummy <- bact_dummy[,colnames(bact_dummy) %in% colnames(f_abun_test)]
+bact_dummy <- bact_dummy[, order(names(bact_dummy))]
+
+b_abun <- rbind(b_abun_test, bact_dummy)
+
+
+
+#saveRDS(f_abun, "../intermediates/global/downsampled_fung_otu_table.rds")
+#saveRDS(b_abun, "../intermediates/global/downsampled_bact_otu_table.rds")
+```
+
+
+
+
+```{r}
+fung_remove <- rownames(fung_abun)[!(rownames(fung_abun) %in% colnames(all_fung_dat))]
+
+filt_fung_net <- delete_vertices(fung_net, fung_remove)
+
+
+bact_remove <- rownames(bact_abun)[!(rownames(bact_abun) %in% colnames(all_bact_dat))]
+
+filt_bact_net <- delete_vertices(bact_net, bact_remove)
+
+
+filt_cross_net <- delete_vertices(cross_net, c(fung_remove, bact_remove))
+
+
+saveRDS(filt_fung_net, "../intermediates/global/downsampled_fung_network.rds")
+saveRDS(filt_bact_net, "../intermediates/global/downsampled_bact_network.rds")
+saveRDS(filt_cross_net, "../intermediates/global/downsampled_cross_network.rds")
+
+#### READ IN POINT ####
+filt_fung_net <- readRDS("../intermediates/global/downsampled_fung_network.rds")
+filt_bact_net <- readRDS("../intermediates/global/downsampled_bact_network.rds")
+filt_cross_net <- readRDS("../intermediates/global/downsampled_cross_network.rds")
+```
+
+# non-randomness
+
+```{r}
+# scale free
+fung_power_law <- power.law.fit(degree(filt_fung_net))$KS.p
+fung_power_law > 0.05
+
+bact_power_law <- power.law.fit(degree(filt_bact_net))$KS.p
+bact_power_law > 0.05
+
+cross_power_law <- power.law.fit(degree(filt_cross_net))$KS.p
+cross_power_law > 0.05
+
+
+power_law_fit_pvals <- c(fung_power_law, bact_power_law, cross_power_law)
+
+
+# small world
+library(qgraph)
+
+fung_sw = smallworldIndex(filt_fung_net)
+
+bact_sw <- smallworldIndex(filt_bact_net) 
+
+cross_sw <- smallworldIndex(filt_cross_net)
+
+
+smallworld_vals <- c(fung_sw$index,
+                     bact_sw$index,
+                     cross_sw$index)
+
+vals <- rbind(power_law_fit_pvals, smallworld_vals)
+vals <- as.data.frame(vals)
+colnames(vals) <- c("Fungi", "Bacteria", "Cross-domain")
+```
+
+
+
+# network metric test
+
+```{r}
+
+all_nets <- list(Fungi = filt_fung_net,
+                 Bacteria = filt_bact_net,
+                 Cross = filt_cross_net)
+
+lapply(all_nets, length)
+
+# subset to only connected nodes (only affects fungi)
+#all_nets <- lapply(all_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+edge_num <- sapply(all_nets, ecount)
+
+
+## DEGREE
+deg <- sapply(all_nets, degree)
+
+## BETWEENNESS CENTRALITY
+bc <- pbmclapply(all_nets, betweenness, mc.cores = detectCores() - 1)
+
+## DIAMETER
+diam <- pbmclapply(all_nets, diameter, mc.cores = detectCores() - 1)
+
+## MODULARITY
+#old_mod <- sapply(all_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+new_mod <- c(readRDS("../intermediates/global/down_fung_netcarto.rds")[[2]],
+             readRDS("../intermediates/global/down_bact_netcarto.rds")[[2]],
+             readRDS("../intermediates/global/down_cross_netcarto.rds")[[2]])
+
+
+## CLUSTERING COEFFICIENT
+cc <- pbmclapply(all_nets, transitivity, mc.cores = detectCores() - 1)
+
+## COMPLEXITY
+cmp <- pbmclapply(all_nets, graph.density, mc.cores = detectCores() - 1)
+
+
+
+
+
+# put it all in a table
+metric_table <- data.frame(rbind(new_mod, unlist(diam), unlist(cc), unlist(cmp)))
+rownames(metric_table) <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+
+metric_table <- metric_table %>% mutate_if(is.numeric, round, digits=3)
+
+domains <- c("Fungi", "Bacteria", "Interkingdom")
+names(metric_table) <- domains
+
+
+mt2 <- rownames_to_column(metric_table)
+
+mt_long <- melt(mt2, id.vars = "rowname", variable.name = "category", value.name = "value")
+names(mt_long) <- c("Metric", "Domain", "value")
+
+
+## PLOT
+
+mets <- unique(mt_long$Metric)
+plotlist <- list()
+
+library(wesanderson)
+
+for (a_metric in mets) {
+  dat <- mt_long[mt_long$Metric==a_metric,]
+  dat$Domain <- factor(dat$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  
+  bar <- ggplot(dat, aes(x=Domain, y=value, fill=Domain)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    ggtitle(a_metric)
+  
+  plotlist[[a_metric]] <- bar
+  
+}
+
+# # adjust y lim
+# plotlist[[2]] <- plotlist[[2]] +
+#                           scale_y_continuous(breaks = seq(0, 18, 3),
+#                                              limits = c(c(0, 18)))
+# 
+plotlist[[3]] <- plotlist[[3]] +
+                          scale_y_continuous(breaks = seq(0, 0.24, 0.06),
+                                             limits = c(c(0, 0.24)))
+
+
+
+## node metric boxplots
+deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(deg[[i]])),
+                   metric = rep("degree", length(deg[[i]])),
+                   value = deg[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  deg_dat[[i]] <- df
+}
+
+deg_all <- do.call("rbind", deg_dat)
+deg_all$log_val <- log(deg_all$value + 1)
+
+
+bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(bc[[i]])),
+                   metric = rep("betweenness", length(bc[[i]])),
+                   value = bc[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  bc_dat[[i]] <- df
+}
+
+bc_all <- do.call("rbind", bc_dat)
+bc_all$log_val <- log(bc_all$value + 1)
+
+
+deg_boxplot <- ggplot(deg_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    #geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    scale_y_continuous(breaks = seq(0, 5, 1), limits = c(c(0, 5))) +
+    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    #scale_color_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Degree, Log-transformed")
+
+
+bc_boxplot <- ggplot(bc_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    #geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    #scale_color_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    scale_y_continuous(breaks = seq(0, 12, 3), limits = c(c(0, 12))) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Betweenness Centrality, Log-transformed")
+
+
+
+library(patchwork)
+
+all_plots <- deg_boxplot + bc_boxplot + plotlist[[1]] + 
+             plotlist[[2]] + plotlist[[3]] + plotlist[[4]] + plot_layout(ncol=3)
+
+ggsave("../figures/finals/global/downsampled_watershed_network_metric_barplots.pdf", all_plots, width=18, height=9)
+#ggsave("../figures/global/downsampled_newinfer_prev20_watershed_network_metric_barplots.png", all_plots, width=19, height=9.5)
+
+```
+
+```{r}
+degree_anova <- aov(log_val ~ Domain, data = deg_all)
+deg_tuk <- as.data.frame(TukeyHSD(degree_anova)$Domain)
+
+```
+
+
+# netviz
+```{r}
+dat <- ggnetwork(asNetwork(cross_net), layout = "fruchtermanreingold")
+dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+dat$domain <- factor(dat$domain, levels=c("Fungi", "Bacteria"))
+
+gg <- ggplot(dat, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(aes(color = domain)) +
+  theme_blank() +
+  scale_color_manual(values=c("#1F78B4", "#A6CEE3"))
+
+
+fung_gg <- ggnetwork(asNetwork(filt_fung_net), layout = "fruchtermanreingold")
+#dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+
+fung_ggnet <- ggplot(fung_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(color = "#A6CEE3") +
+  theme_blank() 
+
+
+bact_gg <- ggnetwork(asNetwork(filt_bact_net), layout = "fruchtermanreingold")
+#dat$domain <- ifelse(grepl("bact", dat$vertex.names), "bacti", "Bacteria")
+
+bact_ggnet <- ggplot(bact_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(color = "#1F78B4") +
+  theme_blank() 
+
+
+
+cross_gg <- ggnetwork(asNetwork(filt_cross_net), layout = "fruchtermanreingold")
+cross_gg$domain <- ifelse(grepl("fung", cross_gg$vertex.names), "Fungi", "Bacteria")
+#cross_gg$domain <- factor(cross_gg$domain, levels=c("Fungi", "Bacteria"))
+
+cross_ggnet <- ggplot(cross_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", linewidth = 0.1) +
+  geom_nodes(aes(color = domain)) +
+  theme_blank() +
+  scale_color_brewer(palette = "Paired") +
+  labs(color = "Domain")
+```
+
+
+# robustness test
+
+```{r}
+# Calculate betweenness removal robustness
+fung_btwn_robustness <- robustness(filt_fung_net, type = "vertex", "btwn.cent")
+fung_btwn_robustness$domain <- "Fungi"
+
+# Calculate betweenness removal robustness
+bact_btwn_robustness <- robustness(filt_bact_net, type = "vertex", "btwn.cent")
+bact_btwn_robustness$domain <- "Bacteria"
+
+# Calculate betweenness removal robustness
+cross_btwn_robustness <- robustness(filt_cross_net, type = "vertex", "btwn.cent")
+cross_btwn_robustness$domain <- "Interkingdom"
+
+
+
+#all_node_robustness_degree <- do.call("rbind", list(fung_node_robustness, bact_node_robustness, cross_node_robustness))
+
+all_node_robustness_btwn <- do.call("rbind", list(fung_btwn_robustness, bact_btwn_robustness, cross_btwn_robustness))
+
+
+all_node_robustness_btwn$domain <- factor(all_node_robustness_btwn$domain, c("Fungi", "Bacteria", "Interkingdom"))
+
+
+
+b <- ggplot(all_node_robustness_btwn, aes(x=removed.pct, y=comp.pct, group=domain, color=domain)) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Watershed-level Networks", color="Kingdom") +
+  geom_line(linewidth=1.5) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  #scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  #scale_color_manual(values=paletteer_d("ggthemes::wsj_rgby")) +
+  scale_color_manual(values = c("#5d8ca8ff", "#d5695dff", "#D3Ba68ff")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+#saveRDS(b, "../figures/finals/global/test_ggplot.rds")
+
+ggsave("../figures/finals/global/downsampled_watershed_robustness.pdf", width=10.5, height=7.5)
+
+#ggsave("../figures/global/downsampled_subgraph_robustness.pdf", width=10.5, height=7.5)
+
+```
+
+
+## keystone robustness
+
+```{r}
+new_fung_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+new_bact_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+
+new_fung_abun <- new_fung_abun[rownames(new_fung_abun)!="dummy",]
+new_bact_abun <- new_bact_abun[rownames(new_bact_abun)!="dummy",]
+
+
+fung_dat <- data.frame(OTU = V(filt_fung_net)$name,
+                       degree = degree(filt_fung_net),
+                       btwn_cent = betweenness(filt_fung_net))
+
+
+fung_relabun <- decostand(t(new_fung_abun), "total")
+fung_relabun <- as.data.frame(t(fung_relabun))
+
+V(filt_fung_net)$proportion <- apply(new_fung_abun, 1, function(c) sum(c!=0) / dim(new_fung_abun)[2])
+
+V(filt_fung_net)$relabun <- apply(fung_relabun, 1, function(b) sum(b) / dim(new_fung_abun)[2])
+
+fung_dat$pct_samples <- V(filt_fung_net)$proportion[match(V(filt_fung_net)$name, fung_dat$OTU)]
+fung_dat$relabun <- V(filt_fung_net)$relabun[match(V(filt_fung_net)$name, fung_dat$OTU)]
+
+fung_dat <- arrange(fung_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+fung_dat$prevalence <- fung_dat$pct_samples * fung_dat$relabun
+
+
+
+fung_deg_mean <- mean(fung_dat$degree)
+fung_deg_sd <- sd(fung_dat$degree)
+
+fung_deg_outliers <- fung_dat[fung_dat$degree>(fung_deg_mean+(2*fung_deg_sd)),]
+
+
+
+fung_bc_mean <- mean(fung_dat$btwn_cent)
+fung_bc_sd <- sd(fung_dat$btwn_cent)
+
+fung_bc_outliers <- fung_dat[fung_dat$btwn_cent>(fung_bc_mean+(2*fung_bc_sd)),]
+
+
+fung_outs <- fung_bc_outliers$OTU[fung_bc_outliers$OTU %in% fung_deg_outliers$OTU]
+fung_out_dat <- fung_dat[fung_dat$OTU %in% unique(fung_outs),]
+fung_out_dat <- fung_out_dat[fung_out_dat$prevalence<0.001,]
+
+
+
+# fung.keystone.plot <- ggplot(fung_dat,aes(x=degree,y=log(btwn_cent + 1))) +
+#     geom_point(aes(size=prevalence, 
+#                    color=ifelse(OTU %in% fung_out_dat$OTU, "Keystone Candidate", "Other")),
+#                position="jitter") +
+#     ylab("Betweenness Centrality") + 
+#     xlab("Node degree") +
+#     #scale_x_continuous(limits=c(0,12), breaks=seq(0,12, by=3)) +
+#     # scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+#     #                    labels=trans_format("log10",math_format(10^.x))) +
+#     scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+#                labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+#     theme(text=element_text(colour="black",size=12)) + 
+#     theme(axis.title=element_text(size=14)) +
+#     theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+#     theme(axis.text.y=element_text(colour="black",size=12)) +
+#     theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+#           panel.background=element_blank()) +
+#     theme(legend.text = element_text(size=12)) +
+#    theme(legend.title = element_text(size=14)) +
+#    guides(color = guide_legend(override.aes = list(size=4))) +
+#     theme(legend.key=element_blank()) +
+#     #theme(legend.key.size = unit(.4, "cm"))+
+#   scale_color_manual(values=c("orange", "black")) +
+#     labs(y = "log(Betweenness Centraliity + 1)", color="Type", size="Prevalence", title="A) Fungi") 
+
+
+## bacteria
+#new_bact_abun <- b_abun[rownames(b_abun)!="dummy",]
+
+bact_dat <- data.frame(OTU = V(filt_bact_net)$name,
+                       degree = degree(filt_bact_net),
+                       btwn_cent = betweenness(filt_bact_net))
+
+
+bact_relabun <- decostand(t(new_bact_abun), "total")
+bact_relabun <- as.data.frame(t(bact_relabun))
+
+V(filt_bact_net)$proportion <- apply(new_bact_abun, 1, function(c) sum(c!=0) / dim(new_bact_abun)[2])
+
+V(filt_bact_net)$relabun <- apply(bact_relabun, 1, function(b) sum(b) / dim(new_bact_abun)[2])
+
+bact_dat$pct_samples <- V(filt_bact_net)$proportion[match(V(filt_bact_net)$name, bact_dat$OTU)]
+bact_dat$relabun <- V(filt_bact_net)$relabun[match(V(filt_bact_net)$name, bact_dat$OTU)]
+
+bact_dat <- arrange(bact_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+bact_dat$prevalence <- bact_dat$pct_samples * bact_dat$relabun
+
+
+
+bact_deg_mean <- mean(bact_dat$degree)
+bact_deg_sd <- sd(bact_dat$degree)
+
+bact_deg_outliers <- bact_dat[bact_dat$degree>(bact_deg_mean+(2*bact_deg_sd)),]
+
+
+
+bact_bc_mean <- mean(bact_dat$btwn_cent)
+bact_bc_sd <- sd(bact_dat$btwn_cent)
+
+bact_bc_outliers <- bact_dat[bact_dat$btwn_cent>(bact_bc_mean+(2*bact_bc_sd)),]
+
+
+bact_outs <- bact_bc_outliers$OTU[bact_bc_outliers$OTU %in% bact_deg_outliers$OTU]
+bact_out_dat <- bact_dat[bact_dat$OTU %in% unique(bact_outs),]
+bact_out_dat <- bact_out_dat[bact_out_dat$prevalence<0.001,]
+
+# cross
+cross_abun <- rbind(new_fung_abun, new_bact_abun)
+
+cross_dat <- data.frame(OTU = V(filt_cross_net)$name,
+                       degree = degree(filt_cross_net),
+                       btwn_cent = betweenness(filt_cross_net))
+
+
+cross_relabun <- decostand(t(cross_abun), "total")
+cross_relabun <- as.data.frame(t(cross_relabun))
+
+V(filt_cross_net)$proportion <- apply(cross_abun, 1, function(c) sum(c!=0) / dim(cross_abun)[2])
+
+V(filt_cross_net)$relabun <- apply(cross_relabun, 1, function(b) sum(b) / dim(cross_abun)[2])
+
+cross_dat$pct_samples <- V(filt_cross_net)$proportion[match(V(filt_cross_net)$name, cross_dat$OTU)]
+cross_dat$relabun <- V(filt_cross_net)$relabun[match(V(filt_cross_net)$name, cross_dat$OTU)]
+
+cross_dat <- arrange(cross_dat, desc(degree), desc(btwn_cent))
+
+# node prevalence = mean rel abun * the proportion of samples the OTU was found in
+cross_dat$prevalence <- cross_dat$pct_samples * cross_dat$relabun
+
+
+
+cross_deg_mean <- mean(cross_dat$degree)
+cross_deg_sd <- sd(cross_dat$degree)
+
+cross_deg_outliers <- cross_dat[cross_dat$degree>(cross_deg_mean+(2*cross_deg_sd)),]
+
+
+
+cross_bc_mean <- mean(cross_dat$btwn_cent)
+cross_bc_sd <- sd(cross_dat$btwn_cent)
+
+cross_bc_outliers <- cross_dat[cross_dat$btwn_cent>(cross_bc_mean+(2*cross_bc_sd)),]
+
+
+cross_outs <- cross_bc_outliers$OTU[cross_bc_outliers$OTU %in% cross_deg_outliers$OTU]
+cross_out_dat <- cross_dat[cross_dat$OTU %in% unique(cross_outs),]
+cross_out_dat <- cross_out_dat[cross_out_dat$prevalence<0.001,]
+
+
+## save
+keystone_data <- list(fung_out_dat, bact_out_dat, cross_out_dat)
+
+```
+
+
+## keystone knockout robustness
+
+```{r}
+## fungi
+# make a new igraph object after removing unwanted nodes
+fung_net_no_keystone <- delete_vertices(filt_fung_net, fung_out_dat$OTU)
+
+
+# Calculate betweeness removal robustness
+fung_full_bc_robust <- robustness(filt_fung_net, type = "vertex", "btwn.cent")
+fung_full_bc_robust$Type <- "Full"
+
+fung_no_keystone_bc_robust <- robustness(fung_net_no_keystone, type = "vertex", "btwn.cent")
+fung_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+fung_bc_rob_data <- rbind(fung_full_bc_robust, fung_no_keystone_bc_robust)
+
+
+fung_key_plot <- ggplot(fung_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Fungi,", nrow(fung_out_dat), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  #theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+## bacteria
+# make a new igraph object after removing unwanted nodes
+bact_net_no_keystone <- delete_vertices(filt_bact_net, bact_out_dat$OTU)
+
+
+# Calculate betweeness removal robustness
+bact_full_bc_robust <- robustness(filt_bact_net, type = "vertex", "btwn.cent")
+bact_full_bc_robust$Type <- "Full"
+
+bact_no_keystone_bc_robust <- robustness(bact_net_no_keystone, type = "vertex", "btwn.cent")
+bact_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+bact_bc_rob_data <- rbind(bact_full_bc_robust, bact_no_keystone_bc_robust)
+
+
+bact_key_plot <- ggplot(bact_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Bacteria,", nrow(bact_out_dat), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+## cross
+# make a new igraph object after removing unwanted nodes
+cross_net_no_keystone <- delete_vertices(filt_cross_net, cross_out_dat$OTU)
+
+
+# Calculate betweeness removal robustness
+cross_full_bc_robust <- robustness(filt_cross_net, type = "vertex", "btwn.cent")
+cross_full_bc_robust$Type <- "Full"
+
+cross_no_keystone_bc_robust <- robustness(cross_net_no_keystone, type = "vertex", "btwn.cent")
+cross_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+cross_bc_rob_data <- rbind(cross_full_bc_robust, cross_no_keystone_bc_robust)
+
+
+cross_key_plot <- ggplot(cross_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Cross-domain,", nrow(cross_out_dat), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title.x = element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+library(patchwork)
+all_plots <- fung_key_plot + bact_key_plot + cross_key_plot
+all_plots <- all_plots + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+
+ggsave("../figures/finals/global/downsampled_subgraph_keystone_knockout_robustness.pdf", width=17, height=6)
+```
+
+
+# rnetcarto hubs
+```{r}
+rnet_stuff <- c(readRDS("../intermediates/global/down_fung_netcarto.rds"),
+             readRDS("../intermediates/global/down_bact_netcarto.rds"),
+             readRDS("../intermediates/global/down_cross_netcarto.rds"))
+
+fung_rnet <- as.data.frame(rnet_stuff[[1]])
+bact_rnet <- as.data.frame(rnet_stuff[[3]])
+cross_rnet <- as.data.frame(rnet_stuff[[5]])
+
+sub_to_hub <- function(df) {
+  subd <- df[grep("Hub", df$role),]
+  return(subd)
+}
+
+
+fung_hubs <- sub_to_hub(fung_rnet)
+bact_hubs <- sub_to_hub(bact_rnet)
+cross_hubs <- sub_to_hub(cross_rnet)
+
+
+
+
+
+## fungi
+# make a new igraph object after removing unwanted nodes
+fung_net_no_keystone <- delete_vertices(filt_fung_net, fung_hubs$name)
+
+
+# Calculate betweeness removal robustness
+fung_full_bc_robust <- robustness(filt_fung_net, type = "vertex", "btwn.cent")
+fung_full_bc_robust$Type <- "Full"
+
+fung_no_keystone_bc_robust <- robustness(fung_net_no_keystone, type = "vertex", "btwn.cent")
+fung_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+fung_bc_rob_data <- rbind(fung_full_bc_robust, fung_no_keystone_bc_robust)
+
+
+fung_key_plot <- ggplot(fung_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Fungi,", nrow(fung_hubs), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  #theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+## bacteria
+# make a new igraph object after removing unwanted nodes
+bact_net_no_keystone <- delete_vertices(filt_bact_net, bact_hubs$name)
+
+
+# Calculate betweeness removal robustness
+bact_full_bc_robust <- robustness(filt_bact_net, type = "vertex", "btwn.cent")
+bact_full_bc_robust$Type <- "Full"
+
+bact_no_keystone_bc_robust <- robustness(bact_net_no_keystone, type = "vertex", "btwn.cent")
+bact_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+bact_bc_rob_data <- rbind(bact_full_bc_robust, bact_no_keystone_bc_robust)
+
+
+bact_key_plot <- ggplot(bact_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Bacteria,", nrow(bact_hubs), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+## cross
+# make a new igraph object after removing unwanted nodes
+cross_net_no_keystone <- delete_vertices(filt_cross_net, cross_hubs$name)
+
+
+# Calculate betweeness removal robustness
+cross_full_bc_robust <- robustness(filt_cross_net, type = "vertex", "btwn.cent")
+cross_full_bc_robust$Type <- "Full"
+
+cross_no_keystone_bc_robust <- robustness(cross_net_no_keystone, type = "vertex", "btwn.cent")
+cross_no_keystone_bc_robust$Type <- "Keystones Removed"
+
+cross_bc_rob_data <- rbind(cross_full_bc_robust, cross_no_keystone_bc_robust)
+
+
+cross_key_plot <- ggplot(cross_bc_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Cross-domain,", nrow(cross_hubs), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title.x = element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+
+library(patchwork)
+all_plots <- fung_key_plot + bact_key_plot + cross_key_plot
+all_plots <- all_plots + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+
+ggsave("../figures/global/alternative_hubs_downsampled_keystone_knockout_robustness.png", width=17, height=6)
+```
+
+
+
+
+
