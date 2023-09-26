@@ -1,0 +1,499 @@
+---
+title: "01_gradient_data_prep"
+output: html_document
+date: "2023-05-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: Figure out which samples and EMPO3 categories are going to be used for the gradient analysis
+Want to have apples to apples, by taking the lowest common sample number within empo category across plots
+
+For example, if all plots have at least 3 instances of plant corpus, even if one plot has 7, just take the top 3.
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+
+# import data
+fung_abun <- readRDS("../../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_meta <- readRDS("../../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+# some data formatting
+fung_meta$trophic[!(fung_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+bact_meta$trophic[!(bact_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+fung_dummy <- fung_abun[row.names(fung_abun)=="dummy",]
+bact_dummy <- bact_abun[row.names(bact_abun)=="dummy",]
+
+names(fung_dummy) <- fung_meta$sample_id[match(names(fung_abun), fung_meta$x_seq_id)]
+names(bact_dummy) <- bact_meta$sample_id[match(names(bact_abun), bact_meta$x_seq_id)]
+
+
+fung_abun <- fung_abun[row.names(fung_abun)!="dummy",]
+bact_abun <- bact_abun[row.names(bact_abun)!="dummy",]
+
+
+
+```
+
+# Fungi 
+
+```{r}
+
+fung_meta_terr <- fung_meta[fung_meta$habitat=="Terrestrial",]
+saveRDS(fung_meta_terr, "../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
+
+fung_abun_terr <- fung_abun[,names(fung_abun) %in% fung_meta_terr$x_seq_id]
+fung_abun_terr <- fung_abun_terr[rowSums(fung_abun_terr)>0,] # 1911 OTUs, 718 samples
+
+names(fung_abun_terr) <- fung_meta_terr$sample_id[match(names(fung_abun_terr), fung_meta_terr$x_seq_id)]
+
+
+fung_terr_samp_counts <- fung_meta_terr %>% dplyr::group_by(empo_3, site_name) %>% dplyr::summarise(sum = n())
+
+fung_terr_min_df <- fung_terr_samp_counts %>% dplyr::group_by(empo_3) %>% dplyr::slice(which.min(sum))
+
+
+```
+
+
+Okay I have the minimum sample counts, now how to take the top x samples from each empo3 category in a plot...
+
+```{r}
+
+
+empos <- unique(fung_terr_min_df$empo_3)
+# need to remove animal distal gut and animal surface because these are not present in Ridge site
+empos <- empos[!empos %in% c("Animal distal gut", "Animal surface")]
+
+# update min count df
+fung_terr_min_df <- fung_terr_min_df[fung_terr_min_df$empo_3 %in% empos,]
+
+
+plots <- unique(fung_meta_terr$site_name)
+
+take_top <- function(empo, abun, meta, min_count_df) {
+  sub_met <- meta[meta$empo_3==empo,]
+  
+  sub_abun <- abun[,names(abun) %in% sub_met$sample_id]
+  sub_abun <- sub_abun[rowSums(sub_abun)>0,] 
+  
+  plots <- unique(sub_met$site_name)
+  
+  res <- list()
+  
+  for (a_plot in plots) {
+    plot_met <- sub_met[sub_met$site_name==a_plot,]
+    plot_abun <- sub_abun[,names(sub_abun) %in% plot_met$sample_id]
+    plot_abun <- plot_abun[rowSums(plot_abun)>0,]
+    
+    min_empo_num <- min_count_df$sum[min_count_df$empo_3==empo]
+    
+    plot_abun <- plot_abun[,order(colSums(plot_abun), decreasing = TRUE)]
+    
+    random_samps_abun <- plot_abun[,sample(names(plot_abun), min_empo_num)]
+    random_samps_abun <- random_samps_abun[rowSums(random_samps_abun)>0,]
+    
+    res[[a_plot]] <- random_samps_abun
+    
+  }
+  
+  return(res)
+  
+}
+
+
+fung_empo_list <- lapply(empos,
+                   take_top,
+                   abun = fung_abun_terr,
+                   meta = fung_meta_terr,
+                   min_count_df = fung_terr_min_df)
+names(fung_empo_list) <- empos
+
+
+multi_merge_matrix <- function(matrix_list) {
+  
+  r <- merge(matrix_list[[1]], matrix_list[[2]], by="row.names", all=TRUE)
+  # ASVs become a row, change back to rownames
+  r <- column_to_rownames(r, "Row.names")
+
+  for (i in 3:length(matrix_list)) {
+  r <- merge(r, matrix_list[[i]], by="row.names", all=T)
+  rownames(r) <- r[,1]
+  r[,1] <- NULL
+  }
+
+  r[is.na(r)] <- 0
+
+  return(r)
+
+}
+
+# animal distal gut and animal surface no more ridge
+
+
+```
+
+I have a list of otu tables for each empo category
+Each empo category has a list of otu tables for each plot
+I want one otu table per plot with all the empo categories to make networks
+
+e.g. I want all the beach otu tables together
+
+```{r}
+ 
+### ENTRANCE
+fung_entrance <- list()
+for (i in 1:6) {
+  fung_entrance[[i]] <- fung_empo_list[[i]][1]
+  
+}
+
+fung_entrance_abun <- multi_merge_matrix(fung_entrance)
+
+
+### CONFLUENCE
+fung_confluence <- list()
+for (i in 1:6) {
+  fung_confluence[[i]] <- fung_empo_list[[i]][2]
+  
+}
+
+fung_confluence_abun <- multi_merge_matrix(fung_confluence)
+
+### WATERFALL
+fung_waterfall <- list()
+for (i in 1:6) {
+  fung_waterfall[[i]] <- fung_empo_list[[i]][3]
+  
+}
+
+fung_waterfall_abun <- multi_merge_matrix(fung_waterfall)
+
+### DRUMROAD
+fung_drumroad <- list()
+for (i in 1:6) {
+  fung_drumroad[[i]] <- fung_empo_list[[i]][4]
+  
+}
+
+fung_drumroad_abun <- multi_merge_matrix(fung_drumroad)
+
+### ESTUARY
+fung_estuary <- list()
+for (i in 1:6) {
+  fung_estuary[[i]] <- fung_empo_list[[i]][5]
+  
+}
+
+fung_estuary_abun <- multi_merge_matrix(fung_estuary)
+
+
+### BEACH
+fung_beach <- list()
+for (i in 1:6) {
+  fung_beach[[i]] <- fung_empo_list[[i]][6]
+  
+}
+
+fung_beach_abun <- multi_merge_matrix(fung_beach)
+
+
+### RIDGE
+fung_ridge <- list()
+for (i in 1:6) {
+  fung_ridge[[i]] <- fung_empo_list[[i]][7]
+  
+}
+
+fung_ridge_abun <- multi_merge_matrix(fung_ridge)
+
+
+all_fung_plot_abun <- list(fung_entrance_abun,
+                           fung_confluence_abun,
+                           fung_waterfall_abun,
+                           fung_drumroad_abun,
+                           fung_estuary_abun,
+                           fung_beach_abun,
+                           fung_ridge_abun)
+
+
+library(stringr)
+
+# remove the plot name from samples
+clean_sample_names <- function(df) {
+  names(df) <- str_extract(names(df), '\\b\\w+$')
+  return(df)
+}
+
+all_fung_plot_abun <- lapply(all_fung_plot_abun, clean_sample_names)
+
+names(all_fung_plot_abun) <- plots
+
+saveRDS(all_fung_plot_abun, "../../intermediates/gradient/terrestrial/six_empos_fung_filt_by_plot_list_for_networks.rds")
+
+
+
+
+
+# add dummy row from prev20 culling, but only for samples existing in the empo/plot tables
+all_fung_plot_abun <- readRDS("../../intermediates/gradient/terrestrial/six_empos_fung_filt_by_plot_list_for_networks.rds")
+
+fung_samp_names <- lapply(all_fung_plot_abun, names)
+
+fung_dummy_by_table <- lapply(fung_samp_names, 
+                              function(x) as.data.frame(fung_dummy[,names(fung_dummy) %in% x]))
+
+
+all_fung_with_dummy <- list()
+
+for(i in 1:7) {
+  attach <- rbind(all_fung_plot_abun[[i]],
+                  fung_dummy_by_table[[i]])
+  all_fung_with_dummy[[i]] <- attach
+}
+
+
+```
+
+
+
+# Bacteria
+
+```{r}
+
+bact_meta_terr <- bact_meta[bact_meta$habitat=="Terrestrial",]
+saveRDS(bact_meta_terr, "../../intermediates/gradient/terrestrial/bact_terrestrial_metadata.rds")
+
+
+bact_abun_terr <- bact_abun[,names(bact_abun) %in% bact_meta_terr$x_seq_id]
+bact_abun_terr <- bact_abun_terr[rowSums(bact_abun_terr)>0,] # 9615 OTUs, 718 samples
+
+names(bact_abun_terr) <- bact_meta_terr$sample_id[match(names(bact_abun_terr), bact_meta_terr$x_seq_id)]
+
+
+bact_terr_samp_counts <- bact_meta_terr %>% dplyr::group_by(empo_3, site_name) %>% dplyr::summarise(sum = n())
+
+bact_terr_min_df <- bact_terr_samp_counts %>% dplyr::group_by(empo_3) %>% dplyr::slice(which.min(sum))
+# update min count df
+bact_terr_min_df <- bact_terr_min_df[bact_terr_min_df$empo_3 %in% empos,]
+
+```
+
+
+
+```{r}
+# this is different from fungi because we want to use the same randomly selected samples as picked for the fungi
+# so this function just gets otu tables by plot, which will be subset by sample id later
+get_bact_plot_abun <- function(empo, abun, meta) {
+  sub_met <- meta[meta$empo_3==empo,]
+  
+  sub_abun <- abun[,names(abun) %in% sub_met$sample_id]
+  sub_abun <- sub_abun[rowSums(sub_abun)>0,] 
+  
+  plots <- unique(sub_met$site_name)
+  
+  res <- list()
+  
+  for (a_plot in plots) {
+    plot_met <- sub_met[sub_met$site_name==a_plot,]
+    plot_abun <- sub_abun[,names(sub_abun) %in% plot_met$sample_id]
+    plot_abun <- plot_abun[rowSums(plot_abun)>0,]
+    
+    res[[a_plot]] <- plot_abun
+    
+  }
+  
+  return(res)
+  
+}
+
+
+bact_empo_list <- lapply(empos,
+                   get_bact_plot_abun,
+                   abun = bact_abun_terr,
+                   meta = bact_meta_terr)
+names(bact_empo_list) <- empos
+
+
+multi_merge_matrix <- function(matrix_list) {
+  
+  r <- merge(matrix_list[[1]], matrix_list[[2]], by="row.names", all=TRUE)
+  # ASVs become a row, change back to rownames
+  r <- column_to_rownames(r, "Row.names")
+
+  for (i in 3:length(matrix_list)) {
+  r <- merge(r, matrix_list[[i]], by="row.names", all=T)
+  rownames(r) <- r[,1]
+  r[,1] <- NULL
+  }
+
+  r[is.na(r)] <- 0
+
+  return(r)
+
+}
+
+# animal distal gut and animal surface no more ridge
+
+
+```
+
+I have a list of otu tables for each empo category
+Each empo category has a list of otu tables for each plot
+I want one otu table per plot with all the empo categories to make networks
+
+e.g. I want all the beach otu tables together
+
+```{r}
+ 
+### ENTRANCE
+bact_entrance <- list()
+for (i in 1:6) {
+  bact_entrance[[i]] <- bact_empo_list[[i]][1]
+  
+}
+
+bact_entrance_abun <- multi_merge_matrix(bact_entrance)
+bact_entrance_abun <- bact_entrance_abun[,names(bact_entrance_abun) %in% names(fung_entrance_abun)]
+bact_entrance_abun <- bact_entrance_abun[rowSums(bact_entrance_abun)>0,]
+
+
+### CONFLUENCE
+bact_confluence <- list()
+for (i in 1:6) {
+  bact_confluence[[i]] <- bact_empo_list[[i]][2]
+  
+}
+
+bact_confluence_abun <- multi_merge_matrix(bact_confluence)
+bact_confluence_abun <- bact_confluence_abun[,names(bact_confluence_abun) %in% names(fung_confluence_abun)]
+bact_confluence_abun <- bact_confluence_abun[rowSums(bact_confluence_abun)>0,]
+
+### WATERFALL
+bact_waterfall <- list()
+for (i in 1:6) {
+  bact_waterfall[[i]] <- bact_empo_list[[i]][3]
+  
+}
+
+bact_waterfall_abun <- multi_merge_matrix(bact_waterfall)
+bact_waterfall_abun <- bact_waterfall_abun[,names(bact_waterfall_abun) %in% names(fung_waterfall_abun)]
+bact_waterfall_abun <- bact_waterfall_abun[rowSums(bact_waterfall_abun)>0,]
+
+
+### DRUMROAD
+bact_drumroad <- list()
+for (i in 1:6) {
+  bact_drumroad[[i]] <- bact_empo_list[[i]][4]
+  
+}
+
+bact_drumroad_abun <- multi_merge_matrix(bact_drumroad)
+bact_drumroad_abun <- bact_drumroad_abun[,names(bact_drumroad_abun) %in% names(fung_drumroad_abun)]
+bact_drumroad_abun <- bact_drumroad_abun[rowSums(bact_drumroad_abun)>0,]
+
+### ESTUARY
+bact_estuary <- list()
+for (i in 1:6) {
+  bact_estuary[[i]] <- bact_empo_list[[i]][5]
+  
+}
+
+bact_estuary_abun <- multi_merge_matrix(bact_estuary)
+bact_estuary_abun <- bact_estuary_abun[,names(bact_estuary_abun) %in% names(fung_estuary_abun)]
+bact_estuary_abun <- bact_estuary_abun[rowSums(bact_estuary_abun)>0,]
+
+
+### BEACH
+bact_beach <- list()
+for (i in 1:6) {
+  bact_beach[[i]] <- bact_empo_list[[i]][6]
+  
+}
+
+bact_beach_abun <- multi_merge_matrix(bact_beach)
+bact_beach_abun <- bact_beach_abun[,names(bact_beach_abun) %in% names(fung_beach_abun)]
+bact_beach_abun <- bact_beach_abun[rowSums(bact_beach_abun)>0,]
+
+
+### RIDGE
+bact_ridge <- list()
+for (i in 1:6) {
+  bact_ridge[[i]] <- bact_empo_list[[i]][7]
+  
+}
+
+bact_ridge_abun <- multi_merge_matrix(bact_ridge)
+bact_ridge_abun <- bact_ridge_abun[,names(bact_ridge_abun) %in% names(fung_ridge_abun)]
+bact_ridge_abun <- bact_ridge_abun[rowSums(bact_ridge_abun)>0,]
+
+
+all_bact_plot_abun <- list(bact_entrance_abun,
+                           bact_confluence_abun,
+                           bact_waterfall_abun,
+                           bact_drumroad_abun,
+                           bact_estuary_abun,
+                           bact_beach_abun,
+                           bact_ridge_abun)
+
+
+library(stringr)
+
+# remove the plot name from samples
+clean_sample_names <- function(df) {
+  names(df) <- str_extract(names(df), '\\b\\w+$')
+  return(df)
+}
+
+all_bact_plot_abun <- lapply(all_bact_plot_abun, clean_sample_names)
+
+names(all_bact_plot_abun) <- plots
+
+saveRDS(all_bact_plot_abun, "../../intermediates/gradient/terrestrial/six_empos_bact_filt_by_plot_list_for_networks.rds")
+
+
+
+# add dummy row from prev20 culling, but only for samples existing in the empo/plot tables
+all_bact_plot_abun <- readRDS("../../intermediates/gradient/terrestrial/six_empos_bact_filt_by_plot_list_for_networks.rds")
+
+bact_samp_names <- lapply(all_bact_plot_abun, names)
+
+bact_dummy_by_table <- lapply(bact_samp_names, 
+                              function(x) as.data.frame(bact_dummy[,names(bact_dummy) %in% x]))
+
+
+all_bact_with_dummy <- list()
+
+for(i in 1:7) {
+  attach <- rbind(all_bact_plot_abun[[i]],
+                  bact_dummy_by_table[[i]])
+  all_bact_with_dummy[[i]] <- attach
+}
+
+```
+
+```{r}
+ff <- lapply(all_fung_with_dummy, function(x) x[,sort(names(x))])
+saveRDS(ff, "../../intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
+
+bb <- lapply(all_bact_with_dummy, function(x) x[,sort(names(x))])
+saveRDS(bb, "../../intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
+```
+
+
+
+
+
+
+
+
+

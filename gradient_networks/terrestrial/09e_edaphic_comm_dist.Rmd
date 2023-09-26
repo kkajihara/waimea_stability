@@ -1,0 +1,236 @@
+---
+title: "09e_edaphic_comm_diss"
+output: html_document
+date: "2023-07-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tibble)
+library(dplyr)
+library(igraph)
+library(vegan)
+library(stringr)
+```
+
+```{r}
+soil_data_complete <- readRDS("../../intermediates/gradient/terrestrial/soil_data_complete.rds")
+edaph_summ <- aggregate(. ~ site_num, data = soil_data_complete, FUN = mean)
+edaphs <- names(soil_data_complete)[1:18]
+
+soil_data_filtered <- select(soil_data_complete, site_num, CO2_burst_efflux, `P_OLSEN`, K, Ca, Mg, HWEC, water_holding_capacity, pH)
+edaph_summ_filtered <- edaph_summ[,colnames(edaph_summ) %in% colnames(soil_data_filtered)]
+filtered_edaphs <- names(soil_data_filtered[2:ncol(soil_data_filtered)])
+```
+
+```{r}
+
+# import data
+fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
+bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
+cross_data <- readRDS("../../intermediates/gradient/terrestrial/cross_data.rds")
+
+fung_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
+bact_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/bact_terrestrial_metadata.rds")
+cross_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/cross_metadata_terr.rds")
+
+plots <- unique(fung_meta_terr$site_name)
+
+
+remove_dummy_row <- function(df) {
+  new_df <- df[row.names(df)!="dummy",]
+  return(new_df)
+}
+
+
+fung_data <- lapply(fung_data, remove_dummy_row)
+bact_data <- lapply(bact_data, remove_dummy_row)
+
+
+# read in data = 20% prevalence global networks
+# fung_gradient_networks <- readRDS("../../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+# bact_gradient_networks <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+# cross_gradient_networks <- readRDS("../../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+
+```
+
+Goal: Do a PC1 vs edaphic regerss (like 09c_edaphic_pc_regress.Rmd, but this time on a Bray-Curtis dissimilarity matrix of community composition (not network features))
+
+1 regression per edaphic factor, repeat for single and cross-domain (24 total?)
+
+### ITS
+```{r}
+# full fung data
+fung_tposed_data <- lapply(fung_data, as.data.frame(t))
+
+all_fung <- do.call("rbind.fill", fung_tposed_data)
+rownames(all_fung) <- unlist(lapply(fung_tposed_data, rownames))
+colnames(all_fung) <- str_extract(names(all_fung), '\\b\\w+$')
+
+all_fung[is.na(all_fung)] <- 0
+
+# make bray curtis matrix
+fung_bc_mat <- vegdist(all_fung)
+
+fung_comm_pca <- prcomp(fung_bc_mat, center = TRUE, scale = TRUE)
+
+
+fung_pca_dat <- data.frame(fung_comm_pca$x[,1:2])
+fung_pca_dat$site_num <- cross_meta_terr$site_code[match(rownames(fung_pca_dat), cross_meta_terr$sample_id)]
+
+for (i in 1:length(filtered_edaphs)) {
+  fung_pca_dat[,i+3] <- edaph_summ_filtered[,i+1][match(fung_pca_dat$site_num, edaph_summ_filtered$site_num)]
+  names(fung_pca_dat)[ncol(fung_pca_dat)] <- filtered_edaphs[i]
+}
+
+fung_pca_dat$site_name <- cross_meta_terr$site_name[match(fung_pca_dat$site_num, cross_meta_terr$site_code)]
+fung_pca_dat$site_name <- factor(fung_pca_dat$site_name, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+
+# plots
+fung_edaph_plots <- list()
+
+for (an_edaph in filtered_edaphs) {
+  my_lm <- lm(fung_pca_dat[,"PC1"] ~ fung_pca_dat[,an_edaph])
+  
+  my_plot <- ggplot(fung_pca_dat, aes_string(x = an_edaph, y = "PC1", color = "site_name")) +
+    geom_point() +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(title= an_edaph, x = an_edaph, subtitle = paste("Linear regression:", "R2 =", round(summary(my_lm)$r.squared, 3), ";", "P =", round(summary(my_lm)$coefficients[,4][2], 3)))
+
+  fung_edaph_plots[[an_edaph]] <- my_plot
+  
+}
+
+library(ggpubr)
+
+all_fung_edaph <- ggarrange(plotlist=fung_edaph_plots, ncol = 4, nrow = 2, common.legend = TRUE, legend = "right")
+
+ggsave("../../figures/gradient/terrestrial/fung_edaphic_regress_plots.png", all_fung_edaph, width = 22, height = 9)
+
+
+```
+
+### 16S
+```{r}
+# full bact data
+bact_tposed_data <- lapply(bact_data, as.data.frame(t))
+
+all_bact <- do.call("rbind.fill", bact_tposed_data)
+rownames(all_bact) <- unlist(lapply(bact_tposed_data, rownames))
+colnames(all_bact) <- str_extract(names(all_bact), '\\b\\w+$')
+
+all_bact[is.na(all_bact)] <- 0
+
+# make bray curtis matrix
+bact_bc_mat <- vegdist(all_bact)
+
+bact_comm_pca <- prcomp(bact_bc_mat, center = TRUE, scale = TRUE)
+
+
+bact_pca_dat <- data.frame(bact_comm_pca$x[,1:2])
+bact_pca_dat$site_num <- cross_meta_terr$site_code[match(rownames(bact_pca_dat), cross_meta_terr$sample_id)]
+
+for (i in 1:length(filtered_edaphs)) {
+  bact_pca_dat[,i+3] <- edaph_summ_filtered[,i+1][match(bact_pca_dat$site_num, edaph_summ_filtered$site_num)]
+  names(bact_pca_dat)[ncol(bact_pca_dat)] <- filtered_edaphs[i]
+}
+
+bact_pca_dat$site_name <- cross_meta_terr$site_name[match(bact_pca_dat$site_num, cross_meta_terr$site_code)]
+bact_pca_dat$site_name <- factor(bact_pca_dat$site_name, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+
+# plots
+bact_edaph_plots <- list()
+
+for (an_edaph in filtered_edaphs) {
+  my_lm <- lm(bact_pca_dat[,"PC1"] ~ bact_pca_dat[,an_edaph])
+  
+  my_plot <- ggplot(bact_pca_dat, aes_string(x = an_edaph, y = "PC1", color = "site_name")) +
+    geom_point() +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(title= an_edaph, x = an_edaph, subtitle = paste("Linear regression:", "R2 =", round(summary(my_lm)$r.squared, 3), ";", "P =", round(summary(my_lm)$coefficients[,4][2], 3)))
+
+  bact_edaph_plots[[an_edaph]] <- my_plot
+  
+}
+
+library(ggpubr)
+
+all_bact_edaph <- ggarrange(plotlist=bact_edaph_plots, ncol = 4, nrow = 2, common.legend = TRUE, legend = "right")
+
+ggsave("../../figures/gradient/terrestrial/bact_edaphic_regress_plots.png", all_bact_edaph, width = 22, height = 9)
+
+
+```
+
+### Cross-domain
+```{r}
+# full cross data
+cross_tposed_data <- lapply(cross_data, as.data.frame(t))
+
+all_cross <- do.call("rbind.fill", cross_tposed_data)
+rownames(all_cross) <- unlist(lapply(cross_tposed_data, rownames))
+colnames(all_cross) <- str_extract(names(all_cross), '\\b\\w+$')
+
+all_cross[is.na(all_cross)] <- 0
+
+# make bray curtis matrix
+cross_bc_mat <- vegdist(all_cross)
+
+cross_comm_pca <- prcomp(cross_bc_mat, center = TRUE, scale = TRUE)
+
+
+cross_pca_dat <- data.frame(cross_comm_pca$x[,1:2])
+cross_pca_dat$site_num <- cross_meta_terr$site_code[match(rownames(cross_pca_dat), cross_meta_terr$sample_id)]
+
+for (i in 1:length(filtered_edaphs)) {
+  cross_pca_dat[,i+3] <- edaph_summ_filtered[,i+1][match(cross_pca_dat$site_num, edaph_summ_filtered$site_num)]
+  names(cross_pca_dat)[ncol(cross_pca_dat)] <- filtered_edaphs[i]
+}
+
+cross_pca_dat$site_name <- cross_meta_terr$site_name[match(cross_pca_dat$site_num, cross_meta_terr$site_code)]
+cross_pca_dat$site_name <- factor(cross_pca_dat$site_name, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+
+# plots
+cross_edaph_plots <- list()
+
+for (an_edaph in filtered_edaphs) {
+  my_lm <- lm(cross_pca_dat[,"PC1"] ~ cross_pca_dat[,an_edaph])
+  
+  my_plot <- ggplot(cross_pca_dat, aes_string(x = an_edaph, y = "PC1", color = "site_name")) +
+    geom_point() +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank()) +
+  labs(title= an_edaph, x = an_edaph, subtitle = paste("Linear regression:", "R2 =", round(summary(my_lm)$r.squared, 3), ";", "P =", round(summary(my_lm)$coefficients[,4][2], 3)))
+
+  cross_edaph_plots[[an_edaph]] <- my_plot
+  
+}
+
+library(ggpubr)
+
+all_cross_edaph <- ggarrange(plotlist=cross_edaph_plots, ncol = 4, nrow = 2, common.legend = TRUE, legend = "right")
+
+ggsave("../../figures/gradient/terrestrial/cross_edaphic_regress_plots.png", all_cross_edaph, width = 22, height = 9)
+
+
+```
+
+
+
+
+
+
+
+

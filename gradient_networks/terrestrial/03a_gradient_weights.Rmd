@@ -1,0 +1,325 @@
+---
+title: "03_gradient_netviz"
+output: html_document
+date: "2023-05-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(SpiecEasi)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(ggpubr)
+library(wesanderson)
+
+options(bitmapType='cairo')
+
+```
+
+Get metadata and otu names for each plot network
+
+```{r}
+fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
+bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
+
+
+fung_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
+bact_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/bact_terrestrial_metadata.rds")
+
+plots <- unique(fung_meta_terr$site_name)
+```
+
+## Fungi
+
+```{r}
+
+fung_gradient_networks <- readRDS("../../networks/prev20/gradient/outputs/terrestrial/six_empos_fung_gradient_networks_minlam1e5.rds")
+
+fung_vertex_names <- lapply(fung_data, rownames)
+
+lapply(fung_gradient_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+# add weights
+weighted_fung_igraphs <- list()
+
+for (i in 1:length(fung_gradient_networks)) {
+  optb <- as.matrix(symBeta(getOptBeta(fung_gradient_networks[[i]])))
+  edge_cols <- ifelse(optb>0, 'positive', 'negative')[upper.tri(optb) & optb!=0]
+  ig <- adj2igraph(getRefit(fung_gradient_networks[[i]]),
+                   vertex.attr=list(name=fung_vertex_names[[i]]),
+                   edge.attr=list(edge_sign= edge_cols))
+  
+  weighted_fung_igraphs[[i]] <- ig
+}
+
+lapply(weighted_fung_igraphs, function(x) table(E(x)$edge_sign))
+
+
+fung_no_dummy <- lapply(weighted_fung_igraphs, function(x) delete_vertices(x, "dummy"))
+
+fung_weights <- lapply(fung_no_dummy, function(x) table(E(x)$edge_sign))
+
+fung_wt_tbl = as.data.frame(do.call("rbind", fung_weights))
+fung_wt_tbl$plot <- plots
+
+make_pct_tbl <- function(weight_table) {
+  weight_table$total <- weight_table$negative + weight_table$positive
+  weight_table$neg_pct <- weight_table$negative / weight_table$total
+  weight_table$pos_pct <- weight_table$positive / weight_table$total
+  
+  #eight_table <- weight_table[c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"),]
+  
+  return(weight_table)
+}
+
+fung_wt_tbl <- make_pct_tbl(fung_wt_tbl)
+fung_wt_tbl$domain <- "Fungi"
+# 
+# saveRDS(fung_no_dummy, "../../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+# 
+# 
+# ## visualization
+# 
+# plots <- unique(fung_meta_terr$site_name)
+# 
+# 
+# fung_net_plots <- list()
+# 
+# for (i in 1:length(fung_no_dummy)) {
+#   set.seed(123)
+#   
+#   gg <- ggplot(ggnetwork(asNetwork(fung_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+#   geom_edges(color = "grey20", linewidth = 0.1) +
+#   geom_nodes(color = "#1F78B4") +
+#   theme_blank() +
+#   #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+#   labs(title = paste("Site:", plots[i]))
+#   
+#   fung_net_plots[[i]] <- gg
+# }
+# 
+# names(fung_net_plots) <- plots
+# 
+# fung_net_plots <- fung_net_plots[c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")]
+# 
+# all_fung <- ggarrange(plotlist=fung_net_plots,
+#                       ncol = 4,
+#                       nrow = 2) + bgcolor("white")
+# 
+# ggsave("../../figures/gradient/terrestrial/fung_network_plots_fb.jpg", width=20, height=9.5)
+
+```
+
+## Bacteria
+
+```{r}
+bact_vertex_names <- lapply(bact_data, rownames)
+
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+bact_gradient_networks <- readRDS("../../networks/prev20/gradient/outputs/terrestrial/six_empos_bact_gradient_networks.rds")
+
+
+
+# add weights
+weighted_bact_igraphs <- list()
+
+for (i in 1:length(bact_gradient_networks)) {
+  optb <- as.matrix(symBeta(getOptBeta(bact_gradient_networks[[i]])))
+  edge_cols <- ifelse(optb>0, 'positive', 'negative')[upper.tri(optb) & optb!=0]
+  ig <- adj2igraph(getRefit(bact_gradient_networks[[i]]),
+                   vertex.attr=list(name=bact_vertex_names[[i]]),
+                   edge.attr=list(edge_sign= edge_cols))
+  
+  weighted_bact_igraphs[[i]] <- ig
+}
+
+lapply(weighted_bact_igraphs, function(x) table(E(x)$edge_sign))
+
+
+bact_no_dummy <- lapply(weighted_bact_igraphs, function(x) delete_vertices(x, "dummy"))
+
+bact_weights <- lapply(bact_no_dummy, function(x) table(E(x)$edge_sign))
+
+bact_wt_tbl = as.data.frame(do.call("rbind", bact_weights))
+bact_wt_tbl$plot <- plots
+
+bact_wt_tbl <- make_pct_tbl(bact_wt_tbl)
+bact_wt_tbl$domain <- "Bacteria"
+# 
+# saveRDS(bact_no_dummy, "../../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+# 
+# 
+# ## visualization
+# 
+# bact_net_plots <- list()
+# 
+# for (i in 1:length(bact_no_dummy)) {
+#   set.seed(123)
+#   
+#   gg <- ggplot(ggnetwork(asNetwork(bact_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+#   geom_edges(color = "grey20", linewidth = 0.1) +
+#   geom_nodes(color = "#A6CEE3") +
+#   theme_blank() +
+#   #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+#   labs(title = paste("Site:", plots[i]))
+#   
+#   bact_net_plots[[i]] <- gg
+# }
+# 
+# names(bact_net_plots) <- plots
+# 
+# bact_net_plots <- bact_net_plots[c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")]
+# 
+# 
+# all_bact <- ggarrange(plotlist = bact_net_plots,
+#                       ncol = 4,
+#                       nrow = 2) + bgcolor("white")
+# 
+# ggsave("../../figures/gradient/terrestrial/bact_network_plots_fb.jpg", all_bact, width=20, height=9.5)
+# 
+# 
+# 
+# 
+# sum(getRefit(se))/2
+
+```
+
+
+## Cross-domain
+
+```{r}
+
+cross_gradient_networks <- readRDS("../../networks/prev20/gradient/outputs/terrestrial/six_empos_cross_gradient_networks.rds")
+
+
+cross_vertex_names <- list()
+
+for (i in 1:7) {
+  cross_names <- c(fung_vertex_names[[i]], bact_vertex_names[[i]])
+  cross_vertex_names[[i]] <- cross_names
+}
+ 
+
+# add weights
+weighted_cross_igraphs <- list()
+
+for (i in 1:length(cross_gradient_networks)) {
+  optb <- as.matrix(symBeta(getOptBeta(cross_gradient_networks[[i]])))
+  edge_cols <- ifelse(optb>0, 'positive', 'negative')[upper.tri(optb) & optb!=0]
+  ig <- adj2igraph(getRefit(cross_gradient_networks[[i]]),
+                   vertex.attr=list(name=cross_vertex_names[[i]]),
+                   edge.attr=list(edge_sign= edge_cols))
+  
+  weighted_cross_igraphs[[i]] <- ig
+}
+
+lapply(weighted_cross_igraphs, function(x) table(E(x)$edge_sign))
+
+
+cross_no_dummy <- lapply(weighted_cross_igraphs, function(x) delete_vertices(x, "dummy"))
+cross_no_dummy <- lapply(cross_no_dummy, function(x) delete_vertices(x, "dummy"))
+
+cross_weights <- lapply(cross_no_dummy, function(x) table(E(x)$edge_sign))
+
+cross_wt_tbl = as.data.frame(do.call("rbind", cross_weights))
+cross_wt_tbl$plot <- plots
+
+cross_wt_tbl <- make_pct_tbl(cross_wt_tbl)
+cross_wt_tbl$domain <- "Interkingdom"
+
+# saveRDS(cross_no_dummy, "../../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+# 
+# 
+# ## visualization
+# 
+# cross_net_plots <- list()
+# 
+# for (i in 1:length(cross_no_dummy)) {
+#   set.seed(123)
+#   
+#   dat <- ggnetwork(asNetwork(cross_no_dummy[[i]]), layout = "fruchtermanreingold")
+#   dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+# 
+#   
+#   gg <- ggplot(dat, aes(x = x, y = y, xend = xend, yend = yend)) +
+#   geom_edges(color = "grey20", linewidth = 0.1) +
+#   geom_nodes(aes(color = domain)) +
+#   theme_blank() +
+#   scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+#   labs(title = paste("Cross-domain, Site:", plots[i]), color = "Domain")
+#   
+#   cross_net_plots[[i]] <- gg
+# }
+# 
+# 
+# names(cross_net_plots) <- plots
+# 
+# cross_net_plots <- cross_net_plots[c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")]
+# 
+# all_cross <- ggarrange(plotlist = cross_net_plots,
+#                       ncol = 4,
+#                       nrow = 2,
+#                       common.legend = TRUE,
+#                       legend="bottom") + bgcolor("white")
+# 
+# ggsave("../../figures/gradient/terrestrial/cross_network_plots_fb.jpg", width=21, height=9.5)
+
+```
+
+Plot!
+
+```{r}
+all_dat <- do.call("rbind", list(fung_wt_tbl, bact_wt_tbl, cross_wt_tbl))
+domains <- unique(all_dat$domain)
+
+neg_edge_plots <- list()
+
+my_colors <- wes_palette("GrandBudapest2")[2:4]
+
+for (i in 1:length(domains)) {
+  dat <- all_dat[all_dat$domain==domains[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = neg_pct)) +
+    geom_bar(stat="identity", fill=my_colors[i]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black", margin=margin(5,0,0,0))) +
+    #theme(axis.title.x=element_blank()) +
+    scale_y_continuous(breaks = seq(0, 0.4, 0.1), limits = c(c(0, 0.4))) +
+    labs(y = "% Negative Edges", title = domains[i], x = "Site")
+  
+  neg_edge_plots[[i]] <- pl
+}
+
+
+library(patchwork)
+
+p1 <- neg_edge_plots[[1]] + theme(axis.title.x=element_blank())
+p2 <- neg_edge_plots[[2]] + theme(axis.title.y=element_blank())
+p3 <- neg_edge_plots[[3]] + theme(axis.title.x=element_blank()) + theme(axis.title.y=element_blank())
+
+pp <- p1 + p2 + p3
+
+ggsave("../../figures/finals/gradient/neg_edges_by_site.pdf", width=17, height=5)
+```
+
+
+
+
+

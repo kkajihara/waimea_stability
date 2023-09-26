@@ -1,0 +1,739 @@
+---
+title: "04_gradient_metrics"
+output: html_document
+date: "2023-06-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(igraph)
+library(ggnetwork)
+library(network)
+library(intergraph)
+
+library(dplyr)
+library(tibble)
+library(pbmcapply)
+library(reshape2)
+
+library(wesanderson)
+```
+
+```{r}
+options(bitmapType='cairo')
+```
+
+```{r}
+# import igraph objects
+fung_igraphs <- readRDS("../../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_igraphs <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_igraphs <- readRDS("../../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+# metadata
+fung_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
+bact_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/bact_terrestrial_metadata.rds")
+
+plots <- unique(fung_meta_terr$site_name)
+```
+
+### Metrics to Calculate
+For nodes: betweenness, degree, and complexity.
+For networks: modularity, transitivity, diameter.
+
+
+## ITS
+
+```{r}
+fung_nets <- fung_igraphs
+
+lapply(fung_nets, length)
+
+# subset to only connected nodes (only affects fungi)
+#fung_nets <- lapply(fung_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+fung_edge_num <- sapply(fung_nets, ecount)
+
+
+
+## BETWEENNESS CENTRALITY
+fung_bc <- sapply(fung_nets, betweenness)
+
+## DEGREE
+fung_deg <- sapply(fung_nets, degree)
+
+
+fung_apl <- sapply(fung_nets, average.path.length)
+
+## COMPLEXITY
+fung_cmp <- sapply(fung_nets, graph.density)
+
+## DIAMETER
+fung_diam <- sapply(fung_nets, diameter)
+
+## MODULARITY
+#fung_mod <- sapply(fung_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+fung_netcarto <- readRDS("../../intermediates/gradient/terrestrial/fung_gradient_netcarto_results.rds")
+
+fung_new_mod <- sapply(fung_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+fung_cc <- sapply(fung_nets, transitivity)
+
+
+
+metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+
+fung_metrics <- data.frame(modularity <- fung_new_mod,
+                           diameter <- fung_diam,
+                           transitivity <- fung_cc,
+                           complexity <- fung_cmp
+                           )
+names(fung_metrics) <- metrics
+fung_metrics$plot <- plots
+
+fung_mt_long <- melt(fung_metrics, id.vars = "plot", variable.name = "category", value.name = "value")
+names(fung_mt_long) <- c("plot", "metric", "value")
+
+
+unadjusted_fung_metric_plots <- list()
+
+for (i in 1:length(metrics)) {
+  dat <- fung_mt_long[fung_mt_long$metric==metrics[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = value)) +
+    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[2]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=12, margin=margin(0,3,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    labs(y = metrics[i])
+  
+  unadjusted_fung_metric_plots[[i]] <- pl
+}
+
+
+## node metric boxplots
+fung_deg_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(fung_deg[[i]])),
+                   metric = rep("degree", length(fung_deg[[i]])),
+                   value = fung_deg[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  fung_deg_dat[[i]] <- df
+}
+
+fung_deg_all <- do.call("rbind", fung_deg_dat)
+fung_deg_all$log_val <- log(fung_deg_all$value + 1)
+
+
+fung_bc_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(fung_bc[[i]])),
+                   metric = rep("betweenness", length(fung_bc[[i]])),
+                   value = fung_bc[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  fung_bc_dat[[i]] <- df
+}
+
+fung_bc_all <- do.call("rbind", fung_bc_dat)
+fung_bc_all$log_val <- log(fung_bc_all$value + 1)
+
+
+library(wesanderson)
+
+wes_palette("GrandBudapest2")
+
+fung_deg_boxplot <- ggplot(fung_deg_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[1], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[2]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=12, margin=margin(0,3,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    labs(y = "log(Degree + 1)", title = "Fungi") +
+    scale_y_continuous(breaks = seq(0, 5, 1), limits = c(c(0, 5)))
+
+
+fung_bc_boxplot <- ggplot(fung_bc_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[1], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[2]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=12, margin=margin(0,3,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    labs(y = "log(Betweenness Centrality + 1)") +
+    scale_y_continuous(breaks = seq(0, 12.4, 3), limits = c(c(0, 12.4)))
+
+
+
+
+fung_metric_plots <- unadjusted_fung_metric_plots
+
+
+# modularity
+fung_metric_plots[[1]] <- unadjusted_fung_metric_plots[[1]] +
+                          scale_y_continuous(breaks = seq(0, 0.9, 0.15),
+                                             limits = c(c(0, 0.9)))
+
+# diameter
+fung_metric_plots[[2]] <- fung_metric_plots[[2]] +
+                          scale_y_continuous(breaks = seq(0, 50, 10),
+                                             limits = c(c(0, 50)))
+
+
+# transitivity
+fung_metric_plots[[3]] <- unadjusted_fung_metric_plots[[3]] +
+                          scale_y_continuous(breaks = seq(0, 0.4, 0.1),
+                                             limits = c(c(0, 0.4)))
+
+# complexity
+fung_metric_plots[[4]] <- unadjusted_fung_metric_plots[[4]] +
+                          scale_y_continuous(breaks = seq(0, 0.006, 0.002),
+                                             limits = c(c(0, 0.006)))
+
+
+
+all_fung <- ggarrange(fung_deg_boxplot,
+                      fung_bc_boxplot,
+                      fung_metric_plots[[1]],
+                      fung_metric_plots[[2]],
+                      fung_metric_plots[[3]],
+                      fung_metric_plots[[4]],
+                      ncol = 3,
+                      nrow = 2) + bgcolor("white")
+
+#ggsave("../../figures/gradient/terrestrial/fung_metric_plots.jpg", all_fung, width=19, height=9.5)
+
+```
+
+
+## 16S
+
+```{r}
+bact_nets <- bact_igraphs
+
+lapply(bact_nets, length)
+
+# subset to only connected nodes (only affects bacti)
+#bact_nets <- lapply(bact_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+bact_edge_num <- sapply(bact_nets, ecount)
+
+
+
+## BETWEENNESS CENTRALITY
+bact_bc <- sapply(bact_nets, betweenness)
+
+## DEGREE
+bact_deg <- sapply(bact_nets, degree)
+
+## COMPLEXITY
+bact_cmp <- sapply(bact_nets, graph.density)
+
+## DIAMETER
+bact_diam <- sapply(bact_nets, diameter)
+
+## MODULARITY
+#bact_mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+bact_netcarto <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
+
+bact_new_mod <- sapply(bact_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+bact_cc <- sapply(bact_nets, transitivity)
+
+
+
+metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+
+bact_metrics <- data.frame(modularity <- bact_new_mod,
+                           diameter <- bact_diam,
+                           transitivity <- bact_cc,
+                           complexity <- bact_cmp
+                           )
+names(bact_metrics) <- metrics
+bact_metrics$plot <- plots
+
+bact_mt_long <- melt(bact_metrics, id.vars = "plot", variable.name = "category", value.name = "value")
+names(bact_mt_long) <- c("plot", "metric", "value")
+
+
+unadjusted_bact_metric_plots <- list()
+
+for (i in 1:length(metrics)) {
+  dat <- bact_mt_long[bact_mt_long$metric==metrics[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = value)) +
+    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[3]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    #theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.title.y=element_blank())
+  
+  unadjusted_bact_metric_plots[[i]] <- pl
+}
+
+
+## node metric boxplots
+bact_deg_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(bact_deg[[i]])),
+                   metric = rep("degree", length(bact_deg[[i]])),
+                   value = bact_deg[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  bact_deg_dat[[i]] <- df
+}
+
+bact_deg_all <- do.call("rbind", bact_deg_dat)
+bact_deg_all$log_val <- log(bact_deg_all$value)
+
+
+bact_bc_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(bact_bc[[i]])),
+                   metric = rep("betweenness", length(bact_bc[[i]])),
+                   value = bact_bc[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  bact_bc_dat[[i]] <- df
+}
+
+bact_bc_all <- do.call("rbind", bact_bc_dat)
+bact_bc_all$log_val <- log(bact_deg_all$value + 1)
+
+
+bact_deg_boxplot <- ggplot(bact_deg_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[3]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    #theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    scale_y_continuous(breaks = seq(0, 5, 1), limits = c(c(0, 5))) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.title.y=element_blank()) +
+    labs(y = "log(Degree + 1)", title = "Bacteria") 
+
+
+bact_bc_boxplot <- ggplot(bact_bc_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[3]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.title.y=element_blank()) +
+    labs(y = "log(Betweenness Centrality + 1)") +
+    scale_y_continuous(breaks = seq(0, 12.4, 3), limits = c(c(0, 12.4)))
+
+
+
+
+bact_metric_plots <- unadjusted_bact_metric_plots
+
+
+# modularity
+bact_metric_plots[[1]] <- unadjusted_bact_metric_plots[[1]] +
+                          scale_y_continuous(breaks = seq(0, 0.9, 0.15),
+                                             limits = c(c(0, 0.9)))
+
+# diameter
+bact_metric_plots[[2]] <- unadjusted_bact_metric_plots[[2]] +
+                          scale_y_continuous(breaks = seq(0, 50, 10),
+                                             limits = c(c(0, 50)))
+
+
+# transitivity
+bact_metric_plots[[3]] <- bact_metric_plots[[3]] +
+                          scale_y_continuous(breaks = seq(0, 0.4, 0.1),
+                                             limits = c(c(0, 0.4)))
+
+# complexity
+bact_metric_plots[[4]] <- unadjusted_bact_metric_plots[[4]] +
+                          scale_y_continuous(breaks = seq(0, 0.006, 0.002),
+                                             limits = c(c(0, 0.006))) +
+                          theme(axis.title.x=element_text(colour="black", size=12, margin=margin(10,0,0,0))) +
+                          labs(x = "Site")
+  
+
+
+
+all_bact <- ggarrange(bact_deg_boxplot,
+                      bact_bc_boxplot,
+                      bact_metric_plots[[1]],
+                      bact_metric_plots[[2]],
+                      bact_metric_plots[[3]],
+                      bact_metric_plots[[4]],
+                      ncol = 3,
+                      nrow = 2) + bgcolor("white")
+
+#ggsave("../../figures/gradient/terrestrial/bact_metric_plots.jpg", all_bact, width=19, height=9.5)
+
+```
+
+## Cross
+
+```{r}
+cross_nets <- cross_igraphs
+
+lapply(cross_nets, length)
+
+# subset to only connected nodes (only affects crossi)
+#cross_nets <- lapply(cross_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+cross_edge_num <- sapply(cross_nets, ecount)
+
+
+
+## BETWEENNESS CENTRALITY
+cross_bc <- sapply(cross_nets, betweenness)
+
+## DEGREE
+cross_deg <- sapply(cross_nets, degree)
+
+## COMPLEXITY
+cross_cmp <- sapply(cross_nets, graph.density)
+
+## DIAMETER
+cross_diam <- sapply(cross_nets, diameter)
+
+## MODULARITY
+#cross_mod <- sapply(cross_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+cross_netcarto <- readRDS("../../intermediates/gradient/terrestrial/cross_gradient_netcarto_results.rds")
+
+cross_new_mod <- sapply(cross_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+cross_cc <- sapply(cross_nets, transitivity)
+
+
+
+metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+
+cross_metrics <- data.frame(modularity <- cross_new_mod,
+                           diameter <- cross_diam,
+                           transitivity <- cross_cc,
+                           complexity <- cross_cmp
+                           )
+names(cross_metrics) <- metrics
+cross_metrics$plot <- plots
+
+cross_mt_long <- melt(cross_metrics, id.vars = "plot", variable.name = "category", value.name = "value")
+names(cross_mt_long) <- c("plot", "metric", "value")
+
+
+unadjusted_cross_metric_plots <- list()
+
+for (i in 1:length(metrics)) {
+  dat <- cross_mt_long[cross_mt_long$metric==metrics[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = value)) +
+    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    #theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.title.y=element_blank())
+  
+  unadjusted_cross_metric_plots[[i]] <- pl
+}
+
+
+## node metric boxplots
+cross_deg_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(cross_deg[[i]])),
+                   metric = rep("degree", length(cross_deg[[i]])),
+                   value = cross_deg[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  cross_deg_dat[[i]] <- df
+}
+
+cross_deg_all <- do.call("rbind", cross_deg_dat)
+cross_deg_all$log_val <- log(cross_deg_all$value)
+
+
+cross_bc_dat <- list()
+for (i in 1:7) {
+  df <- data.frame(plot = rep(plots[[i]], length(cross_bc[[i]])),
+                   metric = rep("betweenness", length(cross_bc[[i]])),
+                   value = cross_bc[[i]])
+  df$plot <- factor(df$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  cross_bc_dat[[i]] <- df
+}
+
+cross_bc_all <- do.call("rbind", cross_bc_dat)
+cross_bc_all$log_val <- log(cross_bc_all$value + 1)
+
+
+cross_deg_boxplot <- ggplot(cross_deg_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[3], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    #theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    #theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    labs(x = "Site", y = "log(Value)", title = "Cross-domain") +
+    theme(axis.title.x = element_blank()) +
+    theme(axis.title.y = element_blank())
+
+
+cross_bc_boxplot <- ggplot(cross_bc_all, aes(x=plot, y=log_val)) +
+    #geom_jitter(color=wes_palette("GrandBudapest2")[3], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.title.y=element_blank()) +
+    scale_y_continuous(breaks = seq(0, 12.4, 3), limits = c(c(0, 12.4)))
+
+
+
+
+cross_metric_plots <- unadjusted_cross_metric_plots
+
+
+# modularity
+cross_metric_plots[[1]] <- unadjusted_cross_metric_plots[[1]] +
+                          scale_y_continuous(breaks = seq(0, 0.9, 0.15),
+                                             limits = c(c(0, 0.9)))
+
+# diameter
+cross_metric_plots[[2]] <- unadjusted_cross_metric_plots[[2]] +
+                          scale_y_continuous(breaks = seq(0, 50, 10),
+                                             limits = c(c(0, 50)))
+
+
+# transitivity
+cross_metric_plots[[3]] <- unadjusted_cross_metric_plots[[3]] +
+                          scale_y_continuous(breaks = seq(0, 0.4, 0.1),
+                                             limits = c(c(0, 0.4)))
+
+# complexity
+cross_metric_plots[[4]] <- unadjusted_cross_metric_plots[[4]] +
+                          scale_y_continuous(breaks = seq(0, 0.006, 0.002),
+                                             limits = c(c(0, 0.006)))
+
+
+
+all_cross <- ggarrange(cross_deg_boxplot,
+                      cross_bc_boxplot,
+                      cross_metric_plots[[1]],
+                      cross_metric_plots[[2]],
+                      cross_metric_plots[[3]],
+                      cross_metric_plots[[4]],
+                      ncol = 3,
+                      nrow = 2) + bgcolor("white")
+
+#ggsave("../../figures/gradient/terrestrial/cross_metric_plots.jpg", width=19, height=9.5)
+
+```
+
+### save as example of older ways of calculating metrics
+```{r}
+bact_nets <- bact_igraphs
+
+lapply(bact_nets, length)
+
+# subset to only connected nodes (only affects bacti)
+#bact_nets <- lapply(bact_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+bact_edge_num <- sapply(bact_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+bact_bc <- sapply(bact_nets, function(x) centralization.betweenness(x)$centralization)
+
+## DIAMETER
+#diam <- sapply(bact_nets, diameter)
+
+bact_diam <- sapply(bact_nets, diameter)
+
+## MODULARITY
+#mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_fast_greedy(x))))
+
+#bact_mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+bact_netcarto <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
+
+bact_new_mod <- sapply(bact_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+#cc <- sapply(bact_nets, transitivity)
+
+bact_cc <- sapply(bact_nets, transitivity)
+
+## AVG SEPARATION
+#as <- sapply(bact_nets, mean_distance)
+
+bact_as <- sapply(bact_nets, mean_distance)
+
+## COMPLEXITY
+#cmp <- sapply(bact_nets, graph.density)
+
+bact_cmp <- sapply(bact_nets, graph.density)
+
+## AVG BETWEENNESS
+# ab <- sapply(bact_nets, function(x) mean(betweenness(x)))
+metrics <- c("Edge Number", "Diameter", "Betweenness Centrality", "Modularity", "Transitivity", "Average Separation")
+
+bact_metrics <- data.frame(edge_number <- bact_edge_num,
+                           diameter <- bact_diam,
+                           betweenness_centrality <- bact_bc,
+                           modularity <- bact_new_mod,
+                           transitivity <- bact_cc,
+                           average_separation <- bact_as
+                           )
+names(bact_metrics) <- metrics
+bact_metrics$plot <- plots
+
+bact_mt_long <- melt(bact_metrics, id.vars = "plot", variable.name = "category", value.name = "value")
+names(bact_mt_long) <- c("plot", "metric", "value")
+
+
+unadjusted_bact_metric_plots <- list()
+
+for (i in 1:length(metrics)) {
+  dat <- bact_mt_long[bact_mt_long$metric==metrics[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = value, group = 1)) +
+    geom_line() +
+    geom_point() +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",size=14, margin=margin(0,10,0,0))) +
+    theme(axis.title.x=element_text(colour="black", size=14, margin=margin(10,0,0,0))) +
+    labs(x = "Site", y = "Value", title = paste("16S, Metric:", metrics[i]))
+  
+  unadjusted_bact_metric_plots[[i]] <- pl
+}
+
+# gg_ylim_max <- ggplot_build(pl)$layout$panel_scales_y[[1]]$range$range[2]
+# gg_ylim_max_round <- plyr::round_any(gg_ylim_max, 10, f = ceiling)
+# 
+# gg_ylim_min <- ggplot_build(pl)$layout$panel_scales_y[[1]]$range$range[1]
+# gg_ylim_min_round <- plyr::round_any(gg_ylim_min, 1, f = floor)
+
+bact_metric_plots <- unadjusted_bact_metric_plots
+# 
+# # edge count
+# # bact_metric_plots[[1]] <- bact_metric_plots[[1]] + 
+# #                           scale_y_continuous(breaks = seq(1000, 5000, 1000), 
+# #                                              limits = c(c(1000, 5000)))
+# 
+# # diameter
+# bact_metric_plots[[2]] <- bact_metric_plots[[2]] + 
+#                           scale_y_continuous(breaks = seq(10, 50, 10), 
+#                                              limits = c(c(10, 50)))
+# 
+# # betweenness centrality
+# bact_metric_plots[[3]] <- bact_metric_plots[[3]] + 
+#                           scale_y_continuous(breaks = seq(0.025, 0.125, 0.025), 
+#                                              limits = c(c(0.025, 0.125)))
+# 
+# # modularity 
+# # bact_metric_plots[[4]] <- bact_metric_plots[[4]] + 
+# #                           scale_y_continuous(breaks = seq(0.025, 0.125, 0.025), 
+# #                                              limits = c(c(0.025, 0.125)))
+# 
+# 
+# # transitivity
+# bact_metric_plots[[5]] <- bact_metric_plots[[5]] + 
+#                           scale_y_continuous(breaks = seq(0.08, 0.14, 0.01), 
+#                                              limits = c(c(0.08, 0.14)))
+# 
+# # average separation
+# bact_metric_plots[[6]] <- bact_metric_plots[[6]] + 
+#                           scale_y_continuous(breaks = seq(5, 10, 1), 
+#                                              limits = c(c(5, 10)))
+
+
+all_bact <- ggarrange(bact_metric_plots[[1]],
+                      bact_metric_plots[[2]],
+                      bact_metric_plots[[3]],
+                      bact_metric_plots[[4]],
+                      bact_metric_plots[[5]],
+                      bact_metric_plots[[6]],
+                      ncol = 3,
+                      nrow = 2) + bgcolor("white")
+
+ggsave("../../figures/gradient/terrestrial/bact_metric_plots.jpg", width=19, height=9.5)
+
+```
+
+Collect plots test
+
+```{r}
+degree_plots <- fung_deg_boxplot + bact_deg_boxplot + cross_deg_boxplot
+
+
+bc_plots <- fung_bc_boxplot + bact_bc_boxplot + cross_bc_boxplot
+
+mod_plots <- fung_metric_plots[[1]] + bact_metric_plots[[1]] + cross_metric_plots[[1]]
+
+diam_plots <- fung_metric_plots[[2]] + bact_metric_plots[[2]] + cross_metric_plots[[2]]
+
+trans_plots <- fung_metric_plots[[3]] + bact_metric_plots[[3]] + cross_metric_plots[[3]]
+
+comp_plots <- fung_metric_plots[[4]] + bact_metric_plots[[4]] + cross_metric_plots[[4]]
+
+
+degree_plots + bc_plots + mod_plots + plot_layout(nrow = 2)
+
+
+all <- fung_deg_boxplot + bact_deg_boxplot + cross_deg_boxplot +
+  fung_bc_boxplot + bact_bc_boxplot + cross_bc_boxplot + 
+  fung_metric_plots[[1]] + bact_metric_plots[[1]] + cross_metric_plots[[1]] +
+  fung_metric_plots[[2]] + bact_metric_plots[[2]] + cross_metric_plots[[2]] +
+  fung_metric_plots[[3]] + bact_metric_plots[[3]] + cross_metric_plots[[3]] +
+  fung_metric_plots[[4]] + bact_metric_plots[[4]] + cross_metric_plots[[4]] +
+  plot_layout (nrow = 6)
+
+ggsave("../../figures/finals/gradient/all_gradient_metrics.pdf", height=20, width=17)
+
+```
+
+
+
+

@@ -1,0 +1,267 @@
+---
+title: "06_gradient_phylo_dist"
+output: html_document
+date: "2023-06-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, messsage=FALSE}
+library(ape)
+library(picante)
+library(plyr)
+library(ggplot2)
+library(Biostrings)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+bact_data <- readRDS("../../intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
+
+full_bact_meta <- readRDS("../../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+full_bact_physeq <- readRDS("../../intermediates/gradient/bact_physeq_with_tree.rds")
+sample_names(full_bact_physeq) <- full_bact_meta$sample_id[match(sample_names(full_bact_physeq),
+                                                                 full_bact_meta$x_seq_id)]
+
+bact_tree <- phy_tree(full_bact_physeq)
+
+plots <- unique(full_bact_meta[full_bact_meta$habitat=="Terrestrial",]$site_name)
+
+
+test <- readDNAStringSet("../../data/16s_data/bact_no_gaps_100.fasta")
+```
+
+Goal: Subset physeq object by each plot, run unifrac, get phylogenetic distances
+
+```{r}
+# remove dummy row
+for (i in 1:7) {
+  dat <- bact_data[[i]]
+  dat <- dat[rownames(dat)!="dummy",]
+  bact_data[[i]] <- dat
+}
+
+
+# plot_physeqs <- list()
+# 
+# for (i in 1:7) {
+#   dat <- bact_data[[i]]
+#   sub_sam <- subset_samples(full_bact_physeq, sample_names(full_bact_physeq) %in% names(dat))
+#   sub_tax <- subset_taxa(sub_sam, taxa_names(sub_sam) %in% rownames(dat))
+#   
+#   plot_physeqs[[i]] <- sub_tax
+# }
+# 
+# 
+# ## run unifrac
+# library(doParallel)
+# registerDoParallel(cores=15)
+# 
+# site_unifrac <- list()
+# 
+# for (i in 1:7) {
+#   uf <- UniFrac(plot_physeqs[[i]], parallel = TRUE)
+#   site_unifrac[[i]] <- uf
+# }
+# 
+# saveRDS(site_unifrac, "../intermediates/gradient/unifracs_by_plot.rds")
+# 
+# one_uf <- site_unifrac[[1]]
+# test <- ses.mpd(bact_data[[1]], one_uf)
+
+```
+
+
+```{r}
+# okay I think I went about this wrong - rows should correspond to samples, meaning plot
+# columns should be OTUS
+
+# can I still use the whole tree though? I think 
+dat_by_sample <- lapply(bact_data, function(x) as.data.frame(t(x)))
+
+comm_otu_table <- do.call("rbind.fill", dat_by_sample)
+comm_otu_table[is.na(comm_otu_table)] <- 0
+
+my_samp_names <- lapply(dat_by_sample, function(x) rownames(x))
+
+rownames(comm_otu_table) <- do.call("c", my_samp_names)
+
+
+#pd_result <- picante::pd(comm_otu_table, bact_tree, include.root = FALSE)
+
+
+phydist <- cophenetic(bact_tree)
+
+stuff_for_picante <- list(abun = comm_otu_table,
+                          dist = phydist)
+
+saveRDS(stuff_for_picante, "../intermediates/gradient/inputs_for_picante_by_sample.rds")
+
+```
+
+```{r}
+# read in data from batch job
+# test <- readRDS("../intermediates/gradient/picante_phylodist_results.rds")
+# 
+# # Positive SES values (mpd.obs.z > 0) and high quantiles (mpd.obs.p > 0.95) in-
+# # dicate phylogenetic evenness, or a greater phylogenetic distance among co-occurring
+# # species than expected. Negative SES values and low quantiles (mpd.obs.p < 0.05)
+# # indicate phylogenetic clustering, or small phylogenetic distances among co-occurring
+# # species than expected
+# comm_dat <- readRDS("../../intermediates/gradient/terrestrial/picante_by_comm_results.rds")
+# comm_dat$site <- rownames(comm_dat)
+# 
+# comm_dat$site <- factor(comm_dat$site, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+# 
+# 
+# library(wesanderson)
+# mpd_bar <- ggplot(comm_dat, aes(x=site, y=mpd.obs.z)) +
+#     geom_bar(stat="identity", fill = wes_palette("GrandBudapest1")[2]) +
+#     theme_bw() +
+#     theme(axis.text.x = element_text(size=12, colour="black"), 
+#           # panel.grid.major=element_blank(), 
+#           # panel.grid.minor=element_blank(), 
+#           # panel.background=element_blank(), 
+#           axis.line = element_line(colour="black"),
+#           axis.title.x = element_blank(),
+#           axis.title.y = element_blank(),
+#           axis.text.y = element_text(size=12, colour="black"),
+#           legend.position = "none") +
+#     scale_y_continuous(breaks = seq(-0.2, 1.8, 0.2), limits = c(c(-0.2,1.8))) +
+#     labs(title= "Mean Phylogenetic Distances by Plot", y = "z-score", x = "Site")
+# 
+# ggsave("../figures/gradient/mean_phylodist_by_plot.jpg", width=7.5, height=4)
+# 
+# 
+# # according to Perez-Valera et al., PD = (MPDobs - MPDrand) / SDrand
+# comm_dat$pd_v2 <- (comm_dat$mpd.obs - comm_dat$mpd.rand.mean) / comm_dat$mpd.rand.sd # same as z score
+# 
+# 
+# 
+# pd_result$site <- rownames(pd_result)
+# 
+# pd_result$site <- factor(pd_result$site, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+# 
+# pd_bar <- ggplot(pd_result, aes(x=site, y=PD)) +
+#     geom_bar(stat="identity", fill = wes_palette("GrandBudapest1")[1]) +
+#     theme_bw() +
+#     theme(axis.text.x = element_text(size=12, colour="black"), 
+#           # panel.grid.major=element_blank(), 
+#           # panel.grid.minor=element_blank(), 
+#           # panel.background=element_blank(), 
+#           axis.line = element_line(colour="black"),
+#           axis.title.x = element_blank(),
+#           axis.title.y = element_blank(),
+#           axis.text.y = element_text(size=12, colour="black"),
+#           legend.position = "none") +
+#     scale_y_continuous(breaks = seq(0, 480, 120), limits = c(c(0,480))) +
+#     ggtitle("Phylogenetic Distances by Plot")
+# 
+# ggsave("../figures/gradient/phylodist_by_plot.jpg", width=6, height=4)
+
+```
+
+## MPD by Sample
+
+```{r}
+# Positive SES values (mpd.obs.z > 0) and high quantiles (mpd.obs.p > 0.95) in-
+# dicate phylogenetic evenness, or a greater phylogenetic distance among co-occurring
+# species than expected. Negative SES values and low quantiles (mpd.obs.p < 0.05)
+# indicate phylogenetic clustering, or small phylogenetic distances among co-occurring
+# species than expected
+samp_dat <- readRDS("../../intermediates/gradient/terrestrial/picante_by_sample_results.rds")
+samp_dat$sample <- rownames(samp_dat)
+
+samp_dat$plot <- full_bact_meta$site_name[match(samp_dat$sample, full_bact_meta$sample_id)]
+samp_dat$plot <- factor(samp_dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+# names(dat_by_sample) <- plots
+# holding <- list()
+# for(i in 1:length(dat_by_sample)) {
+#   df <- data.frame(samp = rownames(dat_by_sample[[i]]),
+#                    plot = plots[i])
+#   holding[[i]] <- df
+# }
+# all_samps_by_plot <- do.call("rbind.fill", holding)
+# 
+# samp_dat$plot <- all_samps_by_plot$plot[match(samp_dat$sample, all_samps_by_plot$samp)]
+# samp_dat$plot <- factor(samp_dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+saveRDS(samp_dat, "../intermediates/gradient/samp_phydist_data.rds")
+
+library(wesanderson)
+mpd_bar <- ggplot(samp_dat, aes(x=plot, y=mpd.obs.z)) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.8, alpha=0.7, width=0.2) +
+    geom_boxplot(width=0.5,fill = wes_palette("GrandBudapest2")[2]) +
+    scale_y_continuous(breaks = seq(-4, 4, 2), limits = c(c(-4, 4.5))) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.background=element_blank(),
+          axis.line = element_line(colour="black"),
+          axis.text.y = element_text(size=12, colour="black"),
+          axis.title = element_text(size=16),
+          plot.title = element_text(size=18),
+          legend.position = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+    labs(title= "Mean Phylogenetic Distances by Sample", y = "Standardized Effect Score", x="Habitat")
+
+ggsave("../../figures/finals/gradient/mean_phylodist_by_plot_and_sample.pdf", width=8.5, height=6)
+
+
+test_lm <- lm(mpd.obs.z ~ plot, data = samp_dat)
+test <- aov(mpd.obs.z ~ plot, data = samp_dat)
+tuk <- TukeyHSD(test)
+
+tuk_df <- as.data.frame(tuk$plot)
+
+write.csv(tuk_df, "../../outputs/gradient_mpd_tukey.csv")
+
+tuk_sig <- tuk_df[tuk_df$`p adj`<0.05,]
+```
+
+
+
+
+```{r}
+pd.result <- pd(comm_otu_table, phy, include.root = TRUE)
+```
+
+
+```{r}
+# read in data from batch job
+
+mntd_dat <- readRDS("../intermediates/gradient/picante_mntd_results.rds")
+mntd_dat$site <- rownames(mntd_dat)
+
+mntd_dat$site <- factor(mntd_dat$site, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+
+library(wesanderson)
+mntd_bar <- ggplot(mntd_dat, aes(x=site, y=mntd.obs.z)) +
+    geom_bar(stat="identity", fill = wes_palette("GrandBudapest1")[3]) +
+    theme_bw() +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          # panel.grid.major=element_blank(), 
+          # panel.grid.minor=element_blank(), 
+          # panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    #scale_y_continuous(breaks = seq(-0.2, 1.8, 0.2), limits = c(c(-0.2,1.8))) +
+    ggtitle("Mean Neighbor Taxon Distances by Plot")
+
+ggsave("../figures/gradient/mean_neighbor_tax_dist_by_plot.jpg", width=6, height=4)
+```
+
+
+
+
+
