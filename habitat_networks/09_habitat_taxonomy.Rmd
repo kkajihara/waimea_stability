@@ -1,0 +1,119 @@
+---
+title: "09_habitat_taxonomy"
+output: html_document
+date: "2023-10-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(vegan)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# import data
+fung_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+bact_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+habs <- unique(fung_meta$habitat)
+
+
+remove_dummy_row <- function(df) {
+  new_df <- df[row.names(df)!="dummy",]
+  return(new_df)
+}
+
+
+fung_abun <- lapply(fung_abun, remove_dummy_row)
+bact_abun <- lapply(bact_abun, remove_dummy_row)
+
+
+habs <- unique(fung_meta$habitat)
+```
+
+```{r}
+fung_flip <- lapply(fung_abun, function(x) as.data.frame(t(x)))
+all_fung <- do.call("rbind.fill", fung_flip)
+
+fung_sampnames <- unlist(lapply(fung_abun, colnames))
+rownames(all_fung) <- fung_sampnames
+all_fung[is.na(all_fung)] <- 0
+
+fung_w_data <- all_fung
+fung_w_data$habitat <- fung_meta$habitat[match(rownames(fung_w_data), fung_meta$sample_id)]
+
+all_fung_hell <- decostand(all_fung, "hellinger")
+
+fung_perm <- adonis(all_fung_hell ~ habitat, data = fung_w_data, permutations = 9999, method = "bray")
+
+
+fung_nmds <- metaMDS(all_fung, k = 2, distance = "bray", trymax = 100, maxit = 2000)
+
+fung_df <- as.data.frame(scores(fung_nmds)) %>%
+  cbind(fung_w_data$habitat)
+
+test <- fung_df[order(fung_df$NMDS1),]
+new <- test[test$NMDS1<6,]
+
+names(fung_df)[3] <- "habitat"
+  
+fung_gg <- 
+  ggplot(new, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(color = habitat)) +
+  stat_ellipse(geom = "polygon", aes(group = habitat, color = habitat, fill = habitat), alpha = 0.3) +
+  #annotate("text", x = -2, y = 0.95, label = paste0("stress: ", format(fung_nmds$stress, digits = 4)), hjust = 0) +
+  theme_bw()
+
+
+
+
+
+bact_flip <- lapply(bact_abun, function(x) as.data.frame(t(x)))
+all_bact <- do.call("rbind.fill", bact_flip)
+
+bact_sampnames <- unlist(lapply(bact_abun, colnames))
+rownames(all_bact) <- bact_sampnames
+all_bact[is.na(all_bact)] <- 0
+
+bact_w_data <- all_bact
+bact_w_data$habitat <- bact_meta$habitat[match(rownames(bact_w_data), bact_meta$sample_id)]
+
+all_bact_hell <- decostand(all_bact, "hellinger")
+
+bact_perm <- adonis(all_bact_hell ~ habitat, data = bact_w_data, permutations = 9999, method = "bray")
+
+
+bact_nmds <- metaMDS(all_bact, k = 2, distance = "bray", trymax = 100, maxit = 2000)
+
+bact_df <- as.data.frame(scores(bact_nmds)) %>%
+  cbind(bact_w_data$habitat)
+
+names(bact_df)[3] <- "habitat"
+  
+bact_gg <- 
+  ggplot(bact_df, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(aes(color = habitat)) +
+  stat_ellipse(geom = "polygon", aes(group = habitat, color = habitat, fill = habitat), alpha = 0.3) +
+  #annotate("text", x = -2, y = 0.95, label = paste0("stress: ", format(bact_nmds$stress, digits = 4)), hjust = 0) +
+  theme_bw()
+
+```
+
+
+```{r}
+saveRDS(fung_perm, "../intermediates/habitat/fung_hab_permanova.rds")
+saveRDS(bact_perm, "../intermediates/habitat/bact_hab_permanova.rds")
+```
+
+
+
+
+

@@ -291,5 +291,9 @@ ggsave("../figures/finals/habitat/cross_keystone_removal_robustness_by_hab_for_a
 ```
 
 
+```{r}
+saveRDS(list(fung_bc_rob_nokey, bact_bc_rob_nokey, cross_bc_rob_nokey), "../intermediates/habitat/nokey_robustness_hab_data.rds")
+```
+ 
 
 

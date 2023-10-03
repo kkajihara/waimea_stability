@@ -1,0 +1,726 @@
+---
+title: "18_craig"
+output: html_document
+date: "2023-09-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal: compile metrics for all network types 
+
+## Watershed networks (trimmed)
+
+```{r}
+#### READ IN POINT ####
+filt_fung_net <- readRDS("../intermediates/global/downsampled_fung_network.rds")
+filt_bact_net <- readRDS("../intermediates/global/downsampled_bact_network.rds")
+filt_cross_net <- readRDS("../intermediates/global/downsampled_cross_network.rds")
+
+
+all_nets <- list(Fungi = filt_fung_net,
+                 Bacteria = filt_bact_net,
+                 Interkingdom = filt_cross_net)
+
+oturich <- lapply(all_nets, length)
+
+# subset to only connected nodes (only affects fungi)
+#all_nets <- lapply(all_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+## EDGE NUMBER
+edge_num <- sapply(all_nets, ecount)
+
+
+## DEGREE
+deg <- sapply(all_nets, degree)
+mean_deg <- lapply(deg, function(x) mean(log(x + 1)))
+
+## BETWEENNESS CENTRALITY
+bc <- pbmclapply(all_nets, betweenness, mc.cores = detectCores() - 1)
+mean_bc <- lapply(bc, function(x) mean(log(x + 1)))
+
+## DIAMETER
+diam <- pbmclapply(all_nets, diameter, mc.cores = detectCores() - 1)
+
+## MODULARITY
+#old_mod <- sapply(all_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+new_mod <- c(readRDS("../intermediates/global/down_fung_netcarto.rds")[[2]],
+             readRDS("../intermediates/global/down_bact_netcarto.rds")[[2]],
+             readRDS("../intermediates/global/down_cross_netcarto.rds")[[2]])
+
+
+## CLUSTERING COEFFICIENT
+cc <- pbmclapply(all_nets, transitivity, mc.cores = detectCores() - 1)
+
+## COMPLEXITY
+cmp <- pbmclapply(all_nets, graph.density, mc.cores = detectCores() - 1)
+
+
+# put it all in a table
+metric_table <- data.frame(rbind(unlist(oturich), unlist(mean_deg), unlist(mean_bc), new_mod, unlist(diam), unlist(cc), unlist(cmp)))
+rownames(metric_table) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+
+#metric_table <- metric_table %>% mutate_if(is.numeric, round, digits=3)
+
+domains <- c("Fungi", "Bacteria", "Interkingdom")
+names(metric_table) <- domains
+
+metric_table <- as.data.frame(t(metric_table))
+
+
+dat_table <- metric_table
+dat_table$Type <- rep("Watershed", 3)
+dat_table$Kingdom <- row.names(dat_table)
+dat_table$Habitat <- rep("All", 3)
+dat_table$Site <- rep("All", 3)
+
+# neg edges
+ws_neg <- readRDS("../intermediates/global/neg_edge_pcts.rds")
+
+dat_table$PctNegEdges <- ws_neg$neg_pct
+
+# robustness
+trim_net_rob_data <- readRDS("../intermediates/global/trim_net_robustness_data.rds")
+
+fung_btwn_robustness <- trim_net_rob_data[trim_net_rob_data$domain=="Fungi",]
+bact_btwn_robustness <- trim_net_rob_data[trim_net_rob_data$domain=="Bacteria",]
+cross_btwn_robustness <- trim_net_rob_data[trim_net_rob_data$domain=="Interkingdom",]
+
+
+fung_ws <- integrate(approxfun(fung_btwn_robustness$removed.pct, fung_btwn_robustness$comp.pct), 0, 1)$value
+bact_ws <- integrate(approxfun(bact_btwn_robustness$removed.pct, bact_btwn_robustness$comp.pct), 0, 1, subdivisions = 2000)$value
+cross_ws <- integrate(approxfun(cross_btwn_robustness$removed.pct, cross_btwn_robustness$comp.pct), 0, 1)$value
+
+dat_table$AreaUnderRobustnessCurveFull <- c(fung_ws, bact_ws, cross_ws)
+
+# no key
+ws_nokey <- readRDS("../intermediates/global/nokey_robustness_trimmed.rds")
+
+fung_nokey_ws <- integrate(approxfun(ws_nokey[[1]]$removed.pct, ws_nokey[[1]]$comp.pct), 0, 1)$value
+bact_nokey_ws <- integrate(approxfun(ws_nokey[[2]]$removed.pct, ws_nokey[[2]]$comp.pct), 0, 1, subdivisions = 2000)$value
+cross_nokey_ws <- integrate(approxfun(ws_nokey[[3]]$removed.pct, ws_nokey[[3]]$comp.pct), 0, 1)$value
+
+dat_table$AreaUnderRobustnessCurveKeystonesRemoved <- c(fung_nokey_ws, bact_nokey_ws, cross_nokey_ws)
+
+# mpd
+### running on slurm
+
+
+# reorder 
+ws_final_table <- dat_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+```
+
+## Fungi -- habitat networks
+
+```{r}
+# import igraph objects
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+# metadata
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+habs <- unique(fung_meta$habitat)
+
+
+## metrics
+fung_hab_nets <- fung_hab_igraphs
+
+fung_hab_oturich <- lapply(fung_hab_nets, length)
+
+## EDGE NUMBER
+fung_hab_edge_num <- sapply(fung_hab_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+fung_hab_bc <- sapply(fung_hab_nets, betweenness)
+fung_hab_mean_bc <- lapply(fung_hab_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+fung_hab_deg <- sapply(fung_hab_nets, degree)
+fung_hab_mean_deg <- lapply(fung_hab_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+fung_hab_cmp <- sapply(fung_hab_nets, graph.density)
+
+## DIAMETER
+fung_hab_diam <- sapply(fung_hab_nets, diameter)
+
+## MODULARITY
+#fung_mod <- sapply(fung_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+fung_hab_netcarto <- readRDS("../intermediates/habitat/fung_habitat_netcarto_results.rds")
+
+fung_hab_new_mod <- sapply(fung_hab_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+fung_hab_cc <- sapply(fung_hab_nets, transitivity)
+
+
+
+fung_hab_metrics <- data.frame(OTURichness = unlist(fung_hab_oturich),
+                           MeanLogDegree = unlist(fung_hab_mean_deg),
+                           MeanLogBtwnCentr = unlist(fung_hab_mean_bc),
+                           Modularity <- fung_hab_new_mod,
+                           Diameter <- fung_hab_diam,
+                           Transitivity <- fung_hab_cc,
+                           Complexity <- fung_hab_cmp
+                           )
+names(fung_hab_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+fung_hab_metrics$Habitat <- habs
+
+
+
+
+fung_hab_table <- fung_hab_metrics
+fung_hab_table$Type <- rep("Habitat", 3)
+fung_hab_table$Kingdom <- rep("Fungi", 3)
+fung_hab_table$Site <- rep("All", 3)
+
+# neg edges
+fung_hab_neg <- readRDS("../intermediates/habitat/hab_neg_pct.rds")
+
+fung_hab_table$PctNegEdges <- fung_hab_neg$neg_pct[fung_hab_neg$domain=="Fungi"]
+
+# robustness
+all_hab_robustness <- readRDS("../intermediates/habitat/robustness_data_by_habitat.rds")
+
+fung_hab_robustness <- all_hab_robustness[all_hab_robustness$domain=="Fungi",]
+bact_hab_robustness <- all_hab_robustness[all_hab_robustness$domain=="Bacteria",]
+cross_hab_robustness <- all_hab_robustness[all_hab_robustness$domain=="Cross",]
+
+fung_rob_by_hab <- list()
+for (i in 1:3) {
+  fung_rob_by_hab[[i]] <- fung_hab_robustness[fung_hab_robustness$habitat==habs[i],]
+}
+
+fung_hab_auc <- lapply(fung_rob_by_hab, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1)$value)
+
+fung_hab_table$AreaUnderRobustnessCurveFull <- unlist(fung_hab_auc)
+
+# no key
+all_hab_nokey <- readRDS("../intermediates/habitat/nokey_robustness_hab_data.rds")
+
+fung_hab_nokey <- all_hab_nokey[[1]]
+bact_hab_nokey <- all_hab_nokey[[2]]
+cross_hab_nokey <- all_hab_nokey[[3]]
+
+fung_hab_nokey_auc <- sapply(fung_hab_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+fung_hab_table$AreaUnderRobustnessCurveKeystonesRemoved <- fung_hab_nokey_auc
+
+# mpd
+
+
+# reorder 
+fung_hab_final <- fung_hab_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+```
+
+## Bacteria -- Habitat networks
+
+```{r}
+
+## metrics
+bact_hab_nets <- bact_hab_igraphs
+
+bact_hab_oturich <- lapply(bact_hab_nets, length)
+
+## EDGE NUMBER
+bact_hab_edge_num <- sapply(bact_hab_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+bact_hab_bc <- sapply(bact_hab_nets, betweenness)
+bact_hab_mean_bc <- lapply(bact_hab_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+bact_hab_deg <- sapply(bact_hab_nets, degree)
+bact_hab_mean_deg <- lapply(bact_hab_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+bact_hab_cmp <- sapply(bact_hab_nets, graph.density)
+
+## DIAMETER
+bact_hab_diam <- sapply(bact_hab_nets, diameter)
+
+## MODULARITY
+#bact_mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+bact_hab_netcarto <- readRDS("../intermediates/habitat/bact_habitat_netcarto_results.rds")
+
+bact_hab_new_mod <- sapply(bact_hab_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+bact_hab_cc <- sapply(bact_hab_nets, transitivity)
+
+
+
+bact_hab_metrics <- data.frame(OTURichness = unlist(bact_hab_oturich),
+                           MeanLogDegree = unlist(bact_hab_mean_deg),
+                           MeanLogBtwnCentr = unlist(bact_hab_mean_bc),
+                           Modularity <- bact_hab_new_mod,
+                           Diameter <- bact_hab_diam,
+                           Transitivity <- bact_hab_cc,
+                           Complexity <- bact_hab_cmp
+                           )
+names(bact_hab_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+bact_hab_metrics$Habitat <- habs
+
+
+
+
+bact_hab_table <- bact_hab_metrics
+bact_hab_table$Type <- rep("Habitat", 3)
+bact_hab_table$Kingdom <- rep("Bacteria", 3)
+bact_hab_table$Site <- rep("All", 3)
+
+# neg edges
+all_hab_neg <- readRDS("../intermediates/habitat/hab_neg_pct.rds")
+
+bact_hab_table$PctNegEdges <- all_hab_neg$neg_pct[all_hab_neg$domain=="Bacteria"]
+
+
+bact_rob_by_hab <- list()
+for (i in 1:3) {
+  bact_rob_by_hab[[i]] <- bact_hab_robustness[bact_hab_robustness$habitat==habs[i],]
+}
+
+bact_hab_auc <- sapply(bact_rob_by_hab, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+
+bact_hab_table$AreaUnderRobustnessCurveFull <- bact_hab_auc
+
+# no key
+bact_hab_nokey_auc <- sapply(bact_hab_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+bact_hab_table$AreaUnderRobustnessCurveKeystonesRemoved <- bact_hab_nokey_auc
+
+# mpd
+
+
+# reorder 
+bact_hab_final <- bact_hab_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+```
+
+## Interkingdom -- Habitat networks
+
+```{r}
+
+## metrics
+cross_hab_nets <- cross_hab_igraphs
+
+cross_hab_oturich <- lapply(cross_hab_nets, length)
+
+## EDGE NUMBER
+cross_hab_edge_num <- sapply(cross_hab_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+cross_hab_bc <- sapply(cross_hab_nets, betweenness)
+cross_hab_mean_bc <- lapply(cross_hab_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+cross_hab_deg <- sapply(cross_hab_nets, degree)
+cross_hab_mean_deg <- lapply(cross_hab_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+cross_hab_cmp <- sapply(cross_hab_nets, graph.density)
+
+## DIAMETER
+cross_hab_diam <- sapply(cross_hab_nets, diameter)
+
+## MODULARITY
+#cross_mod <- sapply(cross_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+cross_hab_netcarto <- readRDS("../intermediates/habitat/cross_habitat_netcarto_results.rds")
+
+cross_hab_new_mod <- sapply(cross_hab_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+cross_hab_cc <- sapply(cross_hab_nets, transitivity)
+
+
+
+cross_hab_metrics <- data.frame(OTURichness = unlist(cross_hab_oturich),
+                           MeanLogDegree = unlist(cross_hab_mean_deg),
+                           MeanLogBtwnCentr = unlist(cross_hab_mean_bc),
+                           Modularity <- cross_hab_new_mod,
+                           Diameter <- cross_hab_diam,
+                           Transitivity <- cross_hab_cc,
+                           Complexity <- cross_hab_cmp
+                           )
+names(cross_hab_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+cross_hab_metrics$Habitat <- habs
+
+
+
+
+cross_hab_table <- cross_hab_metrics
+cross_hab_table$Type <- rep("Habitat", 3)
+cross_hab_table$Kingdom <- rep("Interkingdom", 3)
+cross_hab_table$Site <- rep("All", 3)
+
+# neg edges
+all_hab_neg <- readRDS("../intermediates/habitat/hab_neg_pct.rds")
+
+cross_hab_table$PctNegEdges <- all_hab_neg$neg_pct[all_hab_neg$domain=="Interkingdom"]
+
+
+cross_rob_by_hab <- list()
+for (i in 1:3) {
+  cross_rob_by_hab[[i]] <- cross_hab_robustness[cross_hab_robustness$habitat==habs[i],]
+}
+
+cross_hab_auc <- sapply(cross_rob_by_hab, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000, stop.on.error = FALSE)$value)
+
+cross_hab_table$AreaUnderRobustnessCurveFull <- cross_hab_auc
+
+# no key
+cross_hab_nokey_auc <- sapply(cross_hab_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000, stop.on.error = FALSE)$value)
+  
+cross_hab_table$AreaUnderRobustnessCurveKeystonesRemoved <- cross_hab_nokey_auc
+
+# mpd
+
+
+# reorder 
+cross_hab_final <- cross_hab_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+```
+
+```{r}
+table_so_far <- do.call("rbind", list(ws_final_table, fung_hab_final, bact_hab_final, cross_hab_final))
+```
+
+
+
+
+## Fungi -- Gradient networks
+
+```{r}
+# import igraph objects
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+# metadata
+fung_meta_terr <- readRDS("../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
+bact_meta_terr <- readRDS("../intermediates/gradient/terrestrial/bact_terrestrial_metadata.rds")
+
+plots <- unique(fung_meta_terr$site_name)
+
+
+## metrics
+fung_grad_nets <- fung_grad_igraphs
+
+fung_grad_oturich <- lapply(fung_grad_nets, length)
+
+## EDGE NUMBER
+fung_grad_edge_num <- sapply(fung_grad_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+fung_grad_bc <- sapply(fung_grad_nets, betweenness)
+fung_grad_mean_bc <- lapply(fung_grad_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+fung_grad_deg <- sapply(fung_grad_nets, degree)
+fung_grad_mean_deg <- lapply(fung_grad_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+fung_grad_cmp <- sapply(fung_grad_nets, graph.density)
+
+## DIAMETER
+fung_grad_diam <- sapply(fung_grad_nets, diameter)
+
+## MODULARITY
+#fung_mod <- sapply(fung_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+fung_grad_netcarto <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_netcarto_results.rds")
+
+fung_grad_new_mod <- sapply(fung_grad_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+fung_grad_cc <- sapply(fung_grad_nets, transitivity)
+
+
+
+fung_grad_metrics <- data.frame(OTURichness = unlist(fung_grad_oturich),
+                           MeanLogDegree = unlist(fung_grad_mean_deg),
+                           MeanLogBtwnCentr = unlist(fung_grad_mean_bc),
+                           Modularity <- fung_grad_new_mod,
+                           Diameter <- fung_grad_diam,
+                           Transitivity <- fung_grad_cc,
+                           Complexity <- fung_grad_cmp
+                           )
+names(fung_grad_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+fung_grad_metrics$Habitat <- rep("Terrestrial", 7)
+
+
+
+
+fung_grad_table <- fung_grad_metrics
+fung_grad_table$Type <- rep("Gradient", 7)
+fung_grad_table$Kingdom <- rep("Fungi", 7)
+fung_grad_table$Site <- plots
+
+
+# neg edges
+all_grad_neg <- readRDS("../intermediates/gradient/terrestrial/neg_edges_gradient.rds")
+
+fung_grad_neg <- all_grad_neg[[1]]
+bact_grad_neg <- all_grad_neg[[2]]
+cross_grad_neg <- all_grad_neg[[3]]
+
+fung_grad_table$PctNegEdges <- fung_grad_neg$neg_pct
+
+# robustness
+all_grad_robustness <- readRDS("../intermediates/gradient/terrestrial/robustness_data_by_plot.rds")
+
+fung_grad_robustness <- all_grad_robustness[all_grad_robustness$domain=="Fungi",]
+bact_grad_robustness <- all_grad_robustness[all_grad_robustness$domain=="Bacteria",]
+cross_grad_robustness <- all_grad_robustness[all_grad_robustness$domain=="Cross",]
+
+fung_rob_by_grad <- list()
+for (i in 1:7) {
+  fung_rob_by_grad[[i]] <- fung_grad_robustness[fung_grad_robustness$plot==plots[i],]
+}
+
+fung_grad_auc <- sapply(fung_rob_by_grad, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+
+fung_grad_table$AreaUnderRobustnessCurveFull <- fung_grad_auc
+
+# no key
+all_grad_nokey <- readRDS("../intermediates/gradient/terrestrial/nokey_gradient.rds")
+
+fung_grad_nokey <- all_grad_nokey[[1]]
+bact_grad_nokey <- all_grad_nokey[[2]]
+cross_grad_nokey <- all_grad_nokey[[3]]
+
+fung_grad_nokey_auc <- sapply(fung_grad_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+fung_grad_table$AreaUnderRobustnessCurveKeystonesRemoved <- fung_grad_nokey_auc
+
+# mpd
+
+
+# reorder 
+fung_grad_final <- fung_grad_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+
+fung_grad_final$Site <- factor(fung_grad_final$Site, levels = c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+fung_grad_final <- fung_grad_final[order(fung_grad_final$Site),]
+
+```
+
+
+
+
+## Bacteria -- Gradient networks
+
+```{r}
+
+## metrics
+bact_grad_nets <- bact_grad_igraphs
+
+bact_grad_oturich <- lapply(bact_grad_nets, length)
+
+## EDGE NUMBER
+bact_grad_edge_num <- sapply(bact_grad_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+bact_grad_bc <- sapply(bact_grad_nets, betweenness)
+bact_grad_mean_bc <- lapply(bact_grad_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+bact_grad_deg <- sapply(bact_grad_nets, degree)
+bact_grad_mean_deg <- lapply(bact_grad_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+bact_grad_cmp <- sapply(bact_grad_nets, graph.density)
+
+## DIAMETER
+bact_grad_diam <- sapply(bact_grad_nets, diameter)
+
+## MODULARITY
+#bact_mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+bact_grad_netcarto <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
+
+bact_grad_new_mod <- sapply(bact_grad_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+bact_grad_cc <- sapply(bact_grad_nets, transitivity)
+
+
+
+bact_grad_metrics <- data.frame(OTURichness = unlist(bact_grad_oturich),
+                           MeanLogDegree = unlist(bact_grad_mean_deg),
+                           MeanLogBtwnCentr = unlist(bact_grad_mean_bc),
+                           Modularity <- bact_grad_new_mod,
+                           Diameter <- bact_grad_diam,
+                           Transitivity <- bact_grad_cc,
+                           Complexity <- bact_grad_cmp
+                           )
+names(bact_grad_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+bact_grad_metrics$Habitat <- rep("Terrestrial", 7)
+
+
+
+
+bact_grad_table <- bact_grad_metrics
+bact_grad_table$Type <- rep("Gradient", 7)
+bact_grad_table$Kingdom <- rep("Bacteria", 7)
+bact_grad_table$Site <- plots
+
+
+# neg edges
+bact_grad_table$PctNegEdges <- bact_grad_neg$neg_pct
+
+# robustness
+bact_rob_by_grad <- list()
+for (i in 1:7) {
+  bact_rob_by_grad[[i]] <- bact_grad_robustness[bact_grad_robustness$plot==plots[i],]
+}
+
+bact_grad_auc <- sapply(bact_rob_by_grad, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+
+bact_grad_table$AreaUnderRobustnessCurveFull <- bact_grad_auc
+
+# no key
+bact_grad_nokey_auc <- sapply(bact_grad_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+bact_grad_table$AreaUnderRobustnessCurveKeystonesRemoved <- bact_grad_nokey_auc
+
+# mpd
+
+
+# reorder 
+bact_grad_final <- bact_grad_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+
+bact_grad_final$Site <- factor(bact_grad_final$Site, levels = c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+bact_grad_final <- bact_grad_final[order(bact_grad_final$Site),]
+
+```
+
+
+## Interkingdom -- Gradient networks
+
+```{r}
+
+## metrics
+cross_grad_nets <- cross_grad_igraphs
+
+cross_grad_oturich <- lapply(cross_grad_nets, length)
+
+## EDGE NUMBER
+cross_grad_edge_num <- sapply(cross_grad_nets, ecount)
+
+## BETWEENNESS CENTRALITY
+cross_grad_bc <- sapply(cross_grad_nets, betweenness)
+cross_grad_mean_bc <- lapply(cross_grad_bc, function(x) mean(log(x + 1)))
+
+## DEGREE
+cross_grad_deg <- sapply(cross_grad_nets, degree)
+cross_grad_mean_deg <- lapply(cross_grad_deg, function(x) mean(log(x + 1)))
+
+## COMPLEXITY
+cross_grad_cmp <- sapply(cross_grad_nets, graph.density)
+
+## DIAMETER
+cross_grad_diam <- sapply(cross_grad_nets, diameter)
+
+## MODULARITY
+#cross_mod <- sapply(cross_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
+
+cross_grad_netcarto <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_netcarto_results.rds")
+
+cross_grad_new_mod <- sapply(cross_grad_netcarto, function(x) x[[2]])
+
+## CLUSTERING COEFFICIENT
+cross_grad_cc <- sapply(cross_grad_nets, transitivity)
+
+
+
+cross_grad_metrics <- data.frame(OTURichness = unlist(cross_grad_oturich),
+                           MeanLogDegree = unlist(cross_grad_mean_deg),
+                           MeanLogBtwnCentr = unlist(cross_grad_mean_bc),
+                           Modularity <- cross_grad_new_mod,
+                           Diameter <- cross_grad_diam,
+                           Transitivity <- cross_grad_cc,
+                           Complexity <- cross_grad_cmp
+                           )
+names(cross_grad_metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+cross_grad_metrics$Habitat <- rep("Terrestrial", 7)
+
+
+
+
+cross_grad_table <- cross_grad_metrics
+cross_grad_table$Type <- rep("Gradient", 7)
+cross_grad_table$Kingdom <- rep("Interkingdom", 7)
+cross_grad_table$Site <- plots
+
+
+# neg edges
+cross_grad_table$PctNegEdges <- cross_grad_neg$neg_pct
+
+# robustness
+cross_rob_by_grad <- list()
+for (i in 1:7) {
+  cross_rob_by_grad[[i]] <- cross_grad_robustness[cross_grad_robustness$plot==plots[i],]
+}
+
+cross_grad_auc <- sapply(cross_rob_by_grad, 
+                       function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+
+cross_grad_table$AreaUnderRobustnessCurveFull <- cross_grad_auc
+
+# no key
+cross_grad_nokey_auc <- sapply(cross_grad_nokey,
+                             function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+cross_grad_table$AreaUnderRobustnessCurveKeystonesRemoved <- cross_grad_nokey_auc
+
+# mpd
+
+
+# reorder 
+cross_grad_final <- cross_grad_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+
+
+cross_grad_final$Site <- factor(cross_grad_final$Site, levels = c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+cross_grad_final <- cross_grad_final[order(cross_grad_final$Site),]
+
+```
+
+
+```{r}
+all_for_now <- list(ws_final_table,
+                               fung_hab_final,
+                               bact_hab_final,
+                               cross_hab_final,
+                               fung_grad_final,
+                               bact_grad_final,
+                               cross_grad_final)
+
+part1 <- do.call("rbind", all_for_now)
+saveRDS(part1, "../outputs/tableforcraig_part1.rds")
+```
+

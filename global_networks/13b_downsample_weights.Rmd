@@ -121,6 +121,8 @@ dat$pos_pct <- dat$positive / dat$total
 dat$domain <- c("Fungi", "Bacteria", "Interkingdom")
 dat$domain <- factor(dat$domain, levels = c("Fungi", "Bacteria", "Interkingdom"))
 
+saveRDS(dat, "../intermediates/global/neg_edge_pcts.rds")
+
 pl <- ggplot(dat, aes(x = domain, y = neg_pct)) +
     geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[2:4]) +
     theme_classic() +

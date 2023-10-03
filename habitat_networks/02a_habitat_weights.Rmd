@@ -281,6 +281,8 @@ all_dat <- do.call("rbind", list(fung_wt_tbl, bact_wt_tbl, cross_wt_tbl))
 all_dat$domain <- factor(all_dat$domain, c("Fungi", "Bacteria", "Interkingdom"))
 domains <- unique(all_dat$domain)
 
+saveRDS(all_dat, "../intermediates/habitat/hab_neg_pct.rds")
+
 neg_edge_plots <- list()
 
 my_colors <- wes_palette("GrandBudapest2")[2:4]
@@ -302,4 +304,9 @@ ggsave("../figures/finals/habitat/neg_edges_by_habitat.pdf", width=8, height=4.5
 ```
 
 
+```{r}
+saveRDS(list(weighted_fung_igraphs, weighted_bact_igraphs, weighted_cross_igraphs),
+        "../intermediates/habitat/weighted_hab_igraphs.rds")
+
+```
 

@@ -1,0 +1,346 @@
+library(plyr)
+library(dplyr)
+library(igraph)
+library(SpiecEasi)
+library(pbmcapply)
+library(vegan)
+library(brainGraph)
+library(rnetcarto)
+
+
+
+weighted_ws_igraphs <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/weighted_igraphs_trimmed.rds")
+
+subnet_by_empo <- function(network, otu_tab, metadata) {
+  
+  otus_by_empo <- list()
+  otus_to_remove <- list()
+  new_subnetworks <- list()
+  empo_otutabs <- list()
+  
+  my_meta <- metadata[metadata$sample_id %in% names(otu_tab),]
+  empos <- unique(my_meta$empo_3)
+  
+  for (an_empo in empos) {
+    sub_meta <- metadata[metadata$empo_3==an_empo,]
+    sub_abun <- otu_tab[,names(otu_tab) %in% sub_meta$sample_id]
+    sub_abun <- sub_abun[rowSums(sub_abun)>0,]
+    
+    empo_otutabs[[an_empo]] <- sub_abun
+    
+    otus_by_empo[[an_empo]] <- rownames(sub_abun)
+    
+    otus_to_remove[[an_empo]] <- rownames(otu_tab)[!(rownames(otu_tab) %in% rownames(sub_abun))]
+    
+    new_subnetworks[[an_empo]] <- delete_vertices(network, otus_to_remove[[an_empo]])
+  }
+  
+  return(list(new_subnetworks, empo_otutabs))
+  
+}
+
+
+remove_dummy_row <- function(otu_tab) {
+  new <- otu_tab[!rownames(otu_tab)=="dummy",]
+  return(new)
+}
+
+
+# make sure otu table has the same number of otus as the network
+fung_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/downsampled_fung_otu_table.rds")
+bact_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/downsampled_bact_otu_table.rds")
+fung_abun <- remove_dummy_row(fung_abun)
+bact_abun <- remove_dummy_row(bact_abun)
+
+cross_abun <- plyr::rbind.fill(fung_abun, bact_abun)
+rownames(cross_abun) <- c(rownames(fung_abun), rownames(bact_abun))
+
+# make sure number of samples is the same as the otu table
+fung_meta <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+fung_meta <- fung_meta[fung_meta$sample_id %in% names(fung_abun),]
+bact_meta <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+bact_meta <- bact_meta[bact_meta$sample_id %in% names(bact_abun),]
+
+cross_meta <- plyr::rbind.fill(fung_meta, bact_meta)
+
+
+# run the function
+
+fung_ws_nets_by_empo <- subnet_by_empo(weighted_ws_igraphs[[1]], fung_abun, fung_meta)[[1]]
+fung_ws_otutabs_by_empo <- subnet_by_empo(weighted_ws_igraphs[[1]], fung_abun, fung_meta)[[2]]
+
+bact_ws_nets_by_empo <- subnet_by_empo(weighted_ws_igraphs[[2]], bact_abun, bact_meta)[[1]]
+bact_ws_otutabs_by_empo <- subnet_by_empo(weighted_ws_igraphs[[2]], bact_abun, bact_meta)[[2]]
+
+cross_ws_nets_by_empo <- subnet_by_empo(weighted_ws_igraphs[[3]], cross_abun, cross_meta)[[1]]
+cross_ws_otutabs_by_empo <- subnet_by_empo(weighted_ws_igraphs[[3]], cross_abun, cross_meta)[[2]]
+
+
+# try on hab networks
+# import igraph objects
+weighted_hab_igraphs <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/weighted_hab_igraphs.rds")
+
+fung_hab_igraphs <- weighted_hab_igraphs[[1]]
+fung_hab_igraphs <- lapply(fung_hab_igraphs, function(x) delete_vertices(x, "dummy"))
+
+bact_hab_igraphs <- weighted_hab_igraphs[[2]]
+bact_hab_igraphs <- lapply(bact_hab_igraphs, function(x) delete_vertices(x, "dummy"))
+
+cross_hab_igraphs <- weighted_hab_igraphs[[3]]
+cross_hab_igraphs <- lapply(cross_hab_igraphs, function(x) delete_vertices(x, "dummy"))
+
+
+fung_hab_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+bact_hab_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+
+fung_hab_data <- lapply(fung_hab_data, remove_dummy_row)
+bact_hab_data <- lapply(bact_hab_data, remove_dummy_row)
+
+cross_hab_data <- list()
+
+for (i in 1:length(fung_hab_data)) {
+  cross <- plyr::rbind.fill(fung_hab_data[[i]], bact_hab_data[[i]])
+  rownames(cross) <- c(rownames(fung_hab_data[[i]]), rownames(bact_hab_data[[i]]))
+  cross_hab_data[[i]] <- cross
+}
+
+# metadata
+fung_meta <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+habs <- unique(fung_meta$habitat)
+
+
+fung_met_list <- list(fung_meta, fung_meta, fung_meta)
+bact_met_list <- list(bact_meta, bact_meta, bact_meta)
+cross_met_list <- list(cross_meta, cross_meta, cross_meta)
+
+
+fung_hab_by_empo <- mapply(subnet_by_empo,
+                           fung_hab_igraphs,
+                           fung_hab_data,
+                           fung_met_list,
+                           SIMPLIFY = FALSE)
+fung_hab_empo_nets <- lapply(fung_hab_by_empo, function(x) x[[1]])
+fung_hab_empo_otutabs <- lapply(fung_hab_by_empo, function(x) x[[2]])
+
+bact_hab_by_empo <- mapply(subnet_by_empo,
+                           bact_hab_igraphs,
+                           bact_hab_data,
+                           bact_met_list,
+                           SIMPLIFY = FALSE)
+bact_hab_empo_nets <- lapply(bact_hab_by_empo, function(x) x[[1]])
+bact_hab_empo_otutabs <- lapply(bact_hab_by_empo, function(x) x[[2]])
+
+cross_hab_by_empo <- mapply(subnet_by_empo,
+                            cross_hab_igraphs,
+                            cross_hab_data,
+                            cross_met_list,
+                            SIMPLIFY = FALSE)
+cross_hab_empo_nets <- lapply(cross_hab_by_empo, function(x) x[[1]])
+cross_hab_empo_otutabs <- lapply(cross_hab_by_empo, function(x) x[[2]])
+
+
+a_really_long_function <- function(list_of_networks, list_of_otutabs, kingdom, habitat, type) {
+  
+  ####### PART 1: Metrics #######
+  oturich <- sapply(list_of_networks, length)
+  
+  ## DEGREE
+  deg <- sapply(list_of_networks, degree)
+  mean_deg <- sapply(deg, function(x) mean(log(x + 1)))
+  print("degree done")
+  
+  ## BETWEENNESS CENTRALITY
+  bc <- pbmclapply(list_of_networks, betweenness, mc.cores = detectCores() - 1)
+  mean_bc <- sapply(bc, function(x) mean(log(x + 1)))
+  print("btwncent done")
+  
+  ## DIAMETER
+  diam <- pbmclapply(list_of_networks, diameter, mc.cores = detectCores() - 1)
+  print("diam done")
+  
+  ## MODULARITY
+  my_netcarto <- lapply(list_of_networks, function(x) netcarto(get.adjacency(x, sparse = FALSE)))
+  print("modularity done")
+  
+  new_mod <- sapply(my_netcarto, function(x) x[[2]])
+  
+  ## CLUSTERING COEFFICIENT
+  cc <- pbmclapply(list_of_networks, transitivity, mc.cores = detectCores() - 1)
+  
+  ## COMPLEXITY
+  cmp <- pbmclapply(list_of_networks, graph.density, mc.cores = detectCores() - 1)
+  
+  
+  metrics <- data.frame(OTURichness = oturich,
+                        MeanLogDegree = mean_deg,
+                        MeanLogBtwnCentr = mean_bc,
+                        Modularity <- new_mod,
+                        Diameter <- unlist(diam),
+                        Transitivity <- unlist(cc),
+                        Complexity <- unlist(cmp)
+  )
+  names(metrics) <- c("OTURichness", "MeanLogDegree", "MeanLogBtwnCentr","Modularity", "Diameter", "Transitivity", "Complexity")
+  
+  print("metrics all done, on to negative edges")
+  
+  my_table <- metrics
+  my_table$Type <- rep(type, length(list_of_networks))
+  my_table$Kingdom <- rep(kingdom, length(list_of_networks))
+  my_table$Habitat <- rep(habitat, length(list_of_networks))
+  my_table$Site <- names(list_of_networks)
+  
+  ### negative edges
+  edge_weights <- lapply(list_of_networks, function(x) table(E(x)$edge_sign))
+  weight_table = as.data.frame(do.call("rbind", edge_weights))
+  weight_table$total <- weight_table$negative + weight_table$positive
+  weight_table$neg_pct <- weight_table$negative / weight_table$total
+  weight_table$pos_pct <- weight_table$positive / weight_table$total
+  
+  my_table$PctNegEdges <- weight_table$neg_pct
+  
+  print("neg edges done, onto robustness")
+  
+  ### robustness
+  rob_bc <- lapply(list_of_networks, function(x) robustness(x, type="vertex", "btwn.cent"))
+  my_auc <- sapply(rob_bc, 
+                   function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+  my_table$AreaUnderRobustnessCurveFull <- my_auc
+  
+  print("robustness done, onto keystones")
+  
+  ### keystone removal robustness
+  distribution_data <- list()
+  for (i in 1:length(list_of_networks)) {
+    distribution_data[[i]] <- data.frame(OTU = V(list_of_networks[[i]])$name,
+                                         degree = deg[[i]],
+                                         bc = bc[[i]]
+    )
+  }
+  
+  # function to get relative abundance tables
+  get_relabun <- function(abun) {
+    relabun <- decostand(t(abun), "total")
+    relabun <- as.data.frame(t(relabun))
+    
+    return(relabun)
+  }
+  
+  relabun <- lapply(list_of_otutabs, get_relabun)
+  
+  # make data frame with proportion and prevalence and other data for each plot
+  for (i in 1:length(distribution_data)) {
+    V(list_of_networks[[i]])$proportion <- apply(list_of_otutabs[[i]], 1, function(c) sum(c!=0) / dim(list_of_otutabs[[i]])[2])
+    V(list_of_networks[[i]])$relabun <- apply(relabun[[i]], 1, function(b) sum(b) / dim(list_of_otutabs[[i]])[2])
+    
+    distribution_data[[i]]$pct_samples <- V(list_of_networks[[i]])$proportion[match(V(list_of_networks[[i]])$name, distribution_data[[i]]$OTU)]
+    distribution_data[[i]]$relabun <- V(list_of_networks[[i]])$relabun[match(V(list_of_networks[[i]])$name, distribution_data[[i]]$OTU)]
+    
+    distribution_data[[i]] <- arrange(distribution_data[[i]], desc(degree), desc(bc))
+    distribution_data[[i]]$prevalence <- distribution_data[[i]]$pct_samples * distribution_data[[i]]$relabun
+  }
+  
+  
+  # identify degree outliers (2 sd outside the mean)
+  degree_outliers <- list()
+  
+  for (i in 1:length(distribution_data)) {
+    degree_mean <- mean(distribution_data[[i]]$degree)
+    degree_sd <- sd(distribution_data[[i]]$degree)
+    
+    outliers <- distribution_data[[i]][distribution_data[[i]]$degree > (degree_mean + (2 * degree_sd)),]
+    degree_outliers[[i]] <- outliers
+  }
+  
+  # identify bc outliers (2 sd outside the mean)
+  btwn_outliers <- list()
+  
+  for (i in 1:length(distribution_data)) {
+    bc_mean <- mean(distribution_data[[i]]$bc)
+    bc_sd <- sd(distribution_data[[i]]$bc)
+    
+    outliers <- distribution_data[[i]][distribution_data[[i]]$bc > (bc_mean + (2 * bc_sd)),]
+    btwn_outliers[[i]] <- outliers
+  }
+  
+  
+  # which otus are outliers in both distributions
+  both_outliers <- list()
+  
+  for (i in 1:length(distribution_data)) {
+    outs <- btwn_outliers[[i]]$OTU[btwn_outliers[[i]]$OTU %in% degree_outliers[[i]]$OTU]
+    new_outlier_data <- distribution_data[[i]][distribution_data[[i]]$OTU %in% unique(outs),]
+    new_outlier_data <- new_outlier_data[new_outlier_data$prevalence<0.001,]
+    
+    both_outliers[[i]] <- new_outlier_data
+  }
+  
+  # make networks with no keystones
+  net_nokey <- list()
+  
+  for (i in 1:length(both_outliers)) {
+    net_no_key <- delete_vertices(list_of_networks[[i]], both_outliers[[i]]$OTU)
+    net_nokey[[i]] <- net_no_key
+  }
+  
+  # get robustness tables for no keystone networks
+  bc_rob_nokey <- list()
+  
+  for (i in 1:length(both_outliers)) {
+    bc_robust <- robustness(net_nokey[[i]], type = "vertex", "btwn.cent")
+    bc_robust$Type <- "Keystones Removed"
+    
+    bc_rob_nokey[[i]] <- bc_robust
+  }
+  
+  my_nokey_auc <- sapply(bc_rob_nokey, 
+                         function(x) integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000)$value)
+  
+  my_table$AreaUnderRobustnessCurveKeystonesRemoved <- my_nokey_auc
+  
+  print("keystones done")
+  
+  
+  
+  # reorder 
+  final_table <- my_table %>% relocate(Type, Kingdom, Habitat, Site, OTURichness)
+  
+  return(final_table)
+}
+
+
+fung_hab_riv <- a_really_long_function(fung_hab_empo_nets[[1]], fung_hab_empo_otutabs[[1]], "Fungi", "Riverine", "Habitat")
+
+fung_hab_terr <- a_really_long_function(fung_hab_empo_nets[[2]], fung_hab_empo_otutabs[[2]], "Fungi", "Terrestrial", "Habitat")
+
+fung_hab_mar <- a_really_long_function(fung_hab_empo_nets[[3]], fung_hab_empo_otutabs[[3]], "Fungi", "Marine", "Habitat")
+
+
+bact_hab_riv <- a_really_long_function(bact_hab_empo_nets[[1]], bact_hab_empo_otutabs[[1]], "Bacteria", "Riverine", "Habitat")
+
+bact_hab_terr <- a_really_long_function(bact_hab_empo_nets[[2]], bact_hab_empo_otutabs[[2]], "Bacteria", "Terrestrial", "Habitat")
+
+bact_hab_mar <- a_really_long_function(bact_hab_empo_nets[[3]], bact_hab_empo_otutabs[[3]], "Bacteria", "Marine", "Habitat")
+
+
+cross_hab_riv <- a_really_long_function(cross_hab_empo_nets[[1]], cross_hab_empo_otutabs[[1]], "Interkingdom", "Riverine", "Habitat")
+
+cross_hab_terr <- a_really_long_function(cross_hab_empo_nets[[2]], cross_hab_empo_otutabs[[2]], "Interkingdom", "Terrestrial", "Habitat")
+
+cross_hab_mar <- a_really_long_function(cross_hab_empo_nets[[3]], cross_hab_empo_otutabs[[3]], "Interkingdom", "Marine", "Habitat")
+
+
+
+all <- do.call("rbind", list(fung_hab_riv,
+                             fung_hab_terr,
+                             fung_hab_mar,
+                             bact_hab_riv,
+                             bact_hab_terr,
+                             bact_hab_mar,
+                             cross_hab_riv,
+                             cross_hab_terr,
+                             cross_hab_mar))
+
+saveRDS(all, "~/cmaiki_lts/kaciekaj/waimea/outputs/sampletype_network_all_data.rds")

@@ -319,6 +319,10 @@ pp <- p1 + p2 + p3
 ggsave("../../figures/finals/gradient/neg_edges_by_site.pdf", width=17, height=5)
 ```
 
+```{r}
+# save for craig stuff
+saveRDS(list(fung_wt_tbl, bact_wt_tbl, cross_wt_tbl), "../../intermediates/gradient/terrestrial/neg_edges_gradient.rds")
+```
 
 
 

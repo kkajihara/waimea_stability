@@ -291,5 +291,9 @@ ggsave("../../figures/finals/gradient/cross_keystone_removal_robustness_by_plot.
 ```
 
 
+```{r}
+saveRDS(list(fung_bc_rob_nokey, bact_bc_rob_nokey, cross_bc_rob_nokey), "../../intermediates/gradient/terrestrial/nokey_gradient.rds")
+```
+
 
 

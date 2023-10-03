@@ -1,0 +1,61 @@
+---
+title: "19_mpd"
+output: html_document
+date: "2023-09-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, messsage=FALSE}
+library(ape)
+library(picante)
+library(plyr)
+library(ggplot2)
+library(Biostrings)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+bact_data <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+bact_data <- bact_data[rownames(bact_data)!="dummy",]
+
+full_bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+full_bact_physeq <- readRDS("../intermediates/gradient/bact_physeq_with_tree.rds")
+sample_names(full_bact_physeq) <- full_bact_meta$sample_id[match(sample_names(full_bact_physeq),
+                                                                 full_bact_meta$x_seq_id)]
+
+bact_tree <- phy_tree(full_bact_physeq)
+
+#plots <- unique(full_bact_meta[full_bact_meta$habitat=="Terrestrial",]$site_name)
+
+
+```
+
+
+```{r}
+# okay I think I went about this wrong - rows should correspond to samples, meaning plot
+# columns should be OTUS
+
+# can I still use the whole tree though? I think 
+bact_data <- as.data.frame(t(bact_data))
+
+
+phydist <- cophenetic(bact_tree)
+
+stuff_for_picante <- list(bact_data, phydist)
+
+saveRDS(stuff_for_picante, "../intermediates/global/inputs_for_picante_by_sample.rds")
+
+# Positive SES values (mpd.obs.z > 0) and high quantiles (mpd.obs.p > 0.95) in-
+# dicate phylogenetic evenness, or a greater phylogenetic distance among co-occurring
+# species than expected. Negative SES values and low quantiles (mpd.obs.p < 0.05)
+# indicate phylogenetic clustering, or small phylogenetic distances among co-occurring
+# species than expected
+samp_dat <- readRDS("../intermediates/global/picante_by_sample_results.rds")
+samp_dat$sample <- rownames(samp_dat)
+
+```

@@ -1,0 +1,60 @@
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:plyr’:
+
+    arrange, count, desc, failwith, id, mutate, rename, summarise,
+    summarize
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+
+Attaching package: ‘igraph’
+
+The following objects are masked from ‘package:dplyr’:
+
+    as_data_frame, groups, union
+
+The following objects are masked from ‘package:stats’:
+
+    decompose, spectrum
+
+The following object is masked from ‘package:base’:
+
+    union
+
+
+Attaching package: ‘SpiecEasi’
+
+The following object is masked from ‘package:igraph’:
+
+    make_graph
+
+Loading required package: parallel
+Loading required package: permute
+
+Attaching package: ‘permute’
+
+The following object is masked from ‘package:igraph’:
+
+    permute
+
+Loading required package: lattice
+This is vegan 2.6-5
+
+Attaching package: ‘vegan’
+
+The following object is masked from ‘package:igraph’:
+
+    diversity
+
+Error in integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 2000) : 
+  extremely bad integrand behaviour
+Calls: a_really_long_function -> sapply -> lapply -> FUN -> integrate
+Execution halted

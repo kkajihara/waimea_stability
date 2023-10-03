@@ -25,8 +25,8 @@ options(bitmapType='cairo')
 ```{r}
 
 # import data
-fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
-bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+fung_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+bact_abun <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
 
 fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
 bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
@@ -40,8 +40,8 @@ remove_dummy_row <- function(df) {
 }
 
 
-fung_data <- lapply(fung_data, remove_dummy_row)
-bact_data <- lapply(bact_data, remove_dummy_row)
+fung_abun <- lapply(fung_abun, remove_dummy_row)
+bact_abun <- lapply(bact_abun, remove_dummy_row)
 
 
 # read in data = 20% prevalence global networks
@@ -74,12 +74,12 @@ get_relabun <- function(abun) {
   return(relabun)
 }
 
-fung_relabun <- lapply(fung_data, get_relabun)
+fung_relabun <- lapply(fung_abun, get_relabun)
 
 # make data frame with proportion and prevalence and other data for each plot
 for (i in 1:length(fung_dat)) {
-  V(fung_habitat_networks[[i]])$proportion <- apply(fung_dat[[i]], 1, function(c) sum(c!=0) / dim(fung_dat[[i]])[2])
-  V(fung_habitat_networks[[i]])$relabun <- apply(fung_relabun[[i]], 1, function(b) sum(b) / dim(fung_dat[[i]])[2])
+  V(fung_habitat_networks[[i]])$proportion <- apply(fung_abun[[i]], 1, function(c) sum(c!=0) / dim(fung_abun[[i]])[2])
+  V(fung_habitat_networks[[i]])$relabun <- apply(fung_relabun[[i]], 1, function(b) sum(b) / dim(fung_abun[[i]])[2])
   
   fung_dat[[i]]$pct_samples <- V(fung_habitat_networks[[i]])$proportion[match(V(fung_habitat_networks[[i]])$name, fung_dat[[i]]$OTU)]
   fung_dat[[i]]$relabun <- V(fung_habitat_networks[[i]])$relabun[match(V(fung_habitat_networks[[i]])$name, fung_dat[[i]]$OTU)]
@@ -125,35 +125,35 @@ for (i in 1:length(fung_dat)) {
 
 
 # plot!
-fung_key_plots <- list()
-
-# this isn't working properly for some reason - only the last instance of the list is colored correctly
-for (i in 1:length(fung_both_outliers)) {
-  
-  fung_key_plots[[i]] <- ggplot(fung_dat[[i]], aes(x=degree, y=btwn_cent)) +
-    geom_point(aes(size = prevalence,
-                   color = ifelse(OTU %in% rownames(fung_both_outliers[[i]]), "Keystone Candidate", "Other")),
-               position = "jitter") +
-    ylab("Betweenness Centrality") + 
-    xlab("Node degree") +
-    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
-                       labels=trans_format("log10",math_format(10^.x))) +
-    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
-               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
-    theme(text=element_text(colour="black",size=12)) + 
-    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=12)) +
-    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
-          panel.background=element_blank()) +
-    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
-    theme(legend.key.size = unit(.4, "cm"))+
-    scale_color_manual(values=c("dodgerblue", "black")) +
-    labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
-  
-  #fung_key_plots[[i]] <- my_plot
-  
-}
+# fung_key_plots <- list()
+# 
+# # this isn't working properly for some reason - only the last instance of the list is colored correctly
+# for (i in 1:length(fung_both_outliers)) {
+#   
+#   fung_key_plots[[i]] <- ggplot(fung_dat[[i]], aes(x=degree, y=btwn_cent)) +
+#     geom_point(aes(size = prevalence,
+#                    color = ifelse(OTU %in% rownames(fung_both_outliers[[i]]), "Keystone Candidate", "Other")),
+#                position = "jitter") +
+#     ylab("Betweenness Centrality") + 
+#     xlab("Node degree") +
+#     scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+#                        labels=trans_format("log10",math_format(10^.x))) +
+#     scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+#                labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+#     theme(text=element_text(colour="black",size=12)) + 
+#     theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+#     theme(axis.text.y=element_text(colour="black",size=12)) +
+#     theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+#           panel.background=element_blank()) +
+#     theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+#     theme(legend.key.size = unit(.4, "cm"))+
+#     scale_color_manual(values=c("dodgerblue", "black")) +
+#     labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
+#   
+#   #fung_key_plots[[i]] <- my_plot
+#   
+# }
 
 
 
@@ -193,12 +193,12 @@ for (i in 1:length(fung_both_outliers)) {
 
 bact_dat <- lapply(bact_habitat_networks, get_distribution_data)
 
-bact_relabun <- lapply(bact_data, get_relabun)
+bact_relabun <- lapply(bact_abun, get_relabun)
 
 # make data frame with proportion and prevalence and other data for each plot
 for (i in 1:length(bact_dat)) {
-  V(bact_habitat_networks[[i]])$proportion <- apply(bact_dat[[i]], 1, function(c) sum(c!=0) / dim(bact_dat[[i]])[2])
-  V(bact_habitat_networks[[i]])$relabun <- apply(bact_relabun[[i]], 1, function(b) sum(b) / dim(bact_dat[[i]])[2])
+  V(bact_habitat_networks[[i]])$proportion <- apply(bact_abun[[i]], 1, function(c) sum(c!=0) / dim(bact_abun[[i]])[2])
+  V(bact_habitat_networks[[i]])$relabun <- apply(bact_relabun[[i]], 1, function(b) sum(b) / dim(bact_abun[[i]])[2])
   
   bact_dat[[i]]$pct_samples <- V(bact_habitat_networks[[i]])$proportion[match(V(bact_habitat_networks[[i]])$name, bact_dat[[i]]$OTU)]
   bact_dat[[i]]$relabun <- V(bact_habitat_networks[[i]])$relabun[match(V(bact_habitat_networks[[i]])$name, bact_dat[[i]]$OTU)]
@@ -244,60 +244,60 @@ for (i in 1:length(bact_dat)) {
 
 
 # plot!
-bact_key_plots <- list()
-
-# this isn't working properly for some reason - only the last instance of the list is colored correctly
-for (i in 1:length(bact_both_outliers)) {
-  
-  bact_key_plots[[i]] <- ggplot(bact_dat[[i]], aes(x=degree, y=btwn_cent)) +
-    geom_point(aes(size = prevalence,
-                   color = ifelse(OTU %in% rownames(bact_both_outliers[[i]]), "Keystone Candidate", "Other")),
-               position = "jitter") +
-    ylab("Betweenness Centrality") + 
-    xlab("Node degree") +
-    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
-                       labels=trans_format("log10",math_format(10^.x))) +
-    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
-               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
-    theme(text=element_text(colour="black",size=12)) + 
-    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=12)) +
-    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
-          panel.background=element_blank()) +
-    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
-    theme(legend.key.size = unit(.4, "cm"))+
-    scale_color_manual(values=c("dodgerblue", "black")) +
-    labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
-  
-  #bact_key_plots[[i]] <- my_plot
-  
-}
+# bact_key_plots <- list()
+# 
+# # this isn't working properly for some reason - only the last instance of the list is colored correctly
+# for (i in 1:length(bact_both_outliers)) {
+#   
+#   bact_key_plots[[i]] <- ggplot(bact_dat[[i]], aes(x=degree, y=btwn_cent)) +
+#     geom_point(aes(size = prevalence,
+#                    color = ifelse(OTU %in% rownames(bact_both_outliers[[i]]), "Keystone Candidate", "Other")),
+#                position = "jitter") +
+#     ylab("Betweenness Centrality") + 
+#     xlab("Node degree") +
+#     scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+#                        labels=trans_format("log10",math_format(10^.x))) +
+#     scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+#                labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+#     theme(text=element_text(colour="black",size=12)) + 
+#     theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+#     theme(axis.text.y=element_text(colour="black",size=12)) +
+#     theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+#           panel.background=element_blank()) +
+#     theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+#     theme(legend.key.size = unit(.4, "cm"))+
+#     scale_color_manual(values=c("dodgerblue", "black")) +
+#     labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
+#   
+#   #bact_key_plots[[i]] <- my_plot
+#   
+# }
 
 
 ```
 
 
-### 16S
+### Cross
 
 ```{r}
 
 cross_dat <- lapply(cross_habitat_networks, get_distribution_data)
 
-cross_data <- list()
+cross_abun <- list()
 
-for (i in 1:length(fung_data)) {
-  cross <- plyr::rbind.fill(fung_data[[i]], bact_data[[i]])
-  rownames(cross) <- c(rownames(fung_data[[i]]), rownames(bact_data[[i]]))
-  cross_data[[i]] <- cross
+for (i in 1:length(fung_abun)) {
+  cross <- plyr::rbind.fill(fung_abun[[i]], bact_abun[[i]])
+  rownames(cross) <- c(rownames(fung_abun[[i]]), rownames(bact_abun[[i]]))
+  cross_abun[[i]] <- cross
 }
 
-cross_relabun <- lapply(cross_data, get_relabun)
+cross_relabun <- lapply(cross_abun, get_relabun)
 
 # make data frame with proportion and prevalence and other data for each plot
 for (i in 1:length(cross_dat)) {
-  V(cross_habitat_networks[[i]])$proportion <- apply(cross_dat[[i]], 1, function(c) sum(c!=0) / dim(cross_dat[[i]])[2])
-  V(cross_habitat_networks[[i]])$relabun <- apply(cross_relabun[[i]], 1, function(b) sum(b) / dim(cross_dat[[i]])[2])
+  V(cross_habitat_networks[[i]])$proportion <- apply(cross_abun[[i]], 1, function(c) sum(c!=0) / dim(cross_abun[[i]])[2])
+  V(cross_habitat_networks[[i]])$relabun <- apply(cross_relabun[[i]], 1, function(b) sum(b) / dim(cross_abun[[i]])[2])
   
   cross_dat[[i]]$pct_samples <- V(cross_habitat_networks[[i]])$proportion[match(V(cross_habitat_networks[[i]])$name, cross_dat[[i]]$OTU)]
   cross_dat[[i]]$relabun <- V(cross_habitat_networks[[i]])$relabun[match(V(cross_habitat_networks[[i]])$name, cross_dat[[i]]$OTU)]
@@ -343,35 +343,35 @@ for (i in 1:length(cross_dat)) {
 
 
 # plot!
-cross_key_plots <- list()
-
-# this isn't working properly for some reason - only the last instance of the list is colored correctly
-for (i in 1:length(cross_both_outliers)) {
-  
-  cross_key_plots[[i]] <- ggplot(cross_dat[[i]], aes(x=degree, y=btwn_cent)) +
-    geom_point(aes(size = prevalence,
-                   color = ifelse(OTU %in% rownames(cross_both_outliers[[i]]), "Keystone Candidate", "Other")),
-               position = "jitter") +
-    ylab("Betweenness Centrality") + 
-    xlab("Node degree") +
-    scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
-                       labels=trans_format("log10",math_format(10^.x))) +
-    scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
-               labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
-    theme(text=element_text(colour="black",size=12)) + 
-    theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=12)) +
-    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
-          panel.background=element_blank()) +
-    theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
-    theme(legend.key.size = unit(.4, "cm"))+
-    scale_color_manual(values=c("dodgerblue", "black")) +
-    labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
-  
-  #cross_key_plots[[i]] <- my_plot
-  
-}
+# cross_key_plots <- list()
+# 
+# # this isn't working properly for some reason - only the last instance of the list is colored correctly
+# for (i in 1:length(cross_both_outliers)) {
+#   
+#   cross_key_plots[[i]] <- ggplot(cross_dat[[i]], aes(x=degree, y=btwn_cent)) +
+#     geom_point(aes(size = prevalence,
+#                    color = ifelse(OTU %in% rownames(cross_both_outliers[[i]]), "Keystone Candidate", "Other")),
+#                position = "jitter") +
+#     ylab("Betweenness Centrality") + 
+#     xlab("Node degree") +
+#     scale_y_continuous(trans=log10_trans(),breaks=trans_breaks("log10",function(x)10^x),
+#                        labels=trans_format("log10",math_format(10^.x))) +
+#     scale_size(breaks = c(0.00001, 0.0001, 0.001, 0.01, 0.02),
+#                labels = c("0.00001", "0.0001", "0.001", "0.01", "0.02")) +
+#     theme(text=element_text(colour="black",size=12)) + 
+#     theme(axis.text.x=element_text(hjust=1,colour="black",size=12)) +
+#     theme(axis.text.y=element_text(colour="black",size=12)) +
+#     theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+#           panel.background=element_blank()) +
+#     theme(legend.key=element_blank())+ theme(legend.text=element_text(size=8)) +
+#     theme(legend.key.size = unit(.4, "cm"))+
+#     scale_color_manual(values=c("dodgerblue", "black")) +
+#     labs(color="Type", size="Prevalence", title=paste("ITS Keystone Candidates, Habitat:", habs[[i]]))
+#   
+#   #cross_key_plots[[i]] <- my_plot
+#   
+# }
 
 
 ```
