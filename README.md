@@ -5,7 +5,7 @@ This project examined co-occurrence networks of fungi, bacteria, and fungi with 
 diverse habitats and hosts to infer universally stabilizing network properties of microbiomes.
 
 
-## Files
+## Directories
 * **global_networks**
   * code to reproduce watershed-level network analyses
 * **gradient_networks**
