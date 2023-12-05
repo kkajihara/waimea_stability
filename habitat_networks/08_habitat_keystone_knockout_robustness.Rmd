@@ -113,7 +113,7 @@ all_fung <- fung_key_rob_plots[[1]] + fung_key_rob_plots[[2]] + fung_key_rob_plo
 #plots <- plots & xlab(NULL) & ylab(NULL)
 all_fung <- all_fung + plot_layout(guides = "collect") 
 
-ggsave("../figures/finals/habitat/fung_keystone_removal_robustness_by_hab_for_affinity.pdf", width=17, height=6.5)
+ggsave("../figures/finals/habitat/fung_keystone_removal_robustness_by_hab_for_affinity.pdf", all_fung, width=17, height=6.25)
 
 
 ```
@@ -200,7 +200,7 @@ all_bact <- bact_key_rob_plots[[1]] + bact_key_rob_plots[[2]] + bact_key_rob_plo
 #plots <- plots & xlab(NULL) & ylab(NULL)
 all_bact <- all_bact + plot_layout(guides = "collect") 
 
-ggsave("../figures/finals/habitat/bact_keystone_removal_robustness_by_hab_for_affinity.pdf", width=17, height=6)
+ggsave("../figures/finals/habitat/bact_keystone_removal_robustness_by_hab_for_affinity.pdf", all_bact, width=17, height=6.25)
 
 
 ```
@@ -285,7 +285,7 @@ all_cross <- cross_key_rob_plots[[1]] + cross_key_rob_plots[[2]] + cross_key_rob
 all_cross <- all_cross + plot_layout(guides = "collect") 
 
 
-ggsave("../figures/finals/habitat/cross_keystone_removal_robustness_by_hab_for_affinity.pdf", width=17, height=6)
+ggsave("../figures/finals/habitat/cross_keystone_removal_robustness_by_hab_for_affinity.pdf", all_cross, width=17, height=6.25)
 
 
 ```

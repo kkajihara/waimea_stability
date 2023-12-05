@@ -63,22 +63,6 @@ fung_site_perm <- adonis(all_fung_hell ~ site, data = fung_w_data, permutations 
 
 
 
-fung_site_nmds <- metaMDS(all_fung, k = 2, distance = "bray", trymax = 100, maxit = 2000)
-
-fung_site_df <- as.data.frame(scores(fung_site_nmds)) %>%
-  cbind(fung_w_data$site)
-
-names(fung_site_df)[3] <- "site"
-  
-fung_site_gg <- 
-  ggplot(fung_site_df, aes(x = NMDS1, y = NMDS2)) +
-  geom_point(aes(color = site)) +
-  stat_ellipse(geom = "polygon", aes(group = site, color = site, fill = site), alpha = 0.3) +
-  #annotate("text", x = -2, y = 0.95, label = paste0("stress: ", format(fung_nmds$stress, digits = 4)), hjust = 0) +
-  theme_bw()
-
-
-
 
 bact_flip <- lapply(bact_abun, function(x) as.data.frame(t(x)))
 all_bact <- do.call("rbind.fill", bact_flip)
@@ -94,21 +78,6 @@ all_bact_hell <- decostand(all_bact, "hellinger")
 
 bact_site_perm <- adonis(all_bact_hell ~ site, data = bact_w_data, permutations = 9999, method = "bray")
 
-bact_site_nmds <- metaMDS(all_bact, k = 2, distance = "bray", trymax = 100, maxit = 2000)
-
-bact_site_df <- as.data.frame(scores(bact_site_nmds)) %>%
-  cbind(bact_w_data$site)
-
-names(bact_site_df)[3] <- "site"
-  
-bact_site_gg <- 
-  ggplot(bact_site_df, aes(x = NMDS1, y = NMDS2)) +
-  geom_point(aes(color = site)) +
-  stat_ellipse(geom = "polygon", aes(group = site, color = site, fill = site), alpha = 0.3) +
-  #annotate("text", x = -2, y = 0.95, label = paste0("stress: ", format(bact_nmds$stress, digits = 4)), hjust = 0) +
-  theme_bw()
-
-
 
 ```
 
@@ -122,37 +91,6 @@ saveRDS(bact_site_perm, "../../intermediates/gradient/terrestrial/bact_site_perm
 
 
 ```{r}
-agg_by_tax <- function(otu_tab, tax_tab, taxonomic_level) {
-  sampnames <- names(otu_tab)
-  
-  copy <- otu_tab
-  copy[,taxonomic_level] <- tax_tab[,taxonomic_level][match(rownames(copy), tax_tab$denovo_OTU)]
-  new_tab <- stats::aggregate(copy[,sampnames], by = list(copy[,taxonomic_level]), sum)
-  
-  final <- column_to_rownames(new_tab, "Group.1")
-  return(final)
-}
-
-otu_tab <- fung_abun[[1]]
-tax_tab <- fung_tax
-
-hmm <- as.data.frame(rowSums(final), drop=FALSE)
-hmm <- decostand(t(hmm), "total")
-what <- as.data.frame(t(hmm))
-what <- what %>% rownames_to_column("Class")
-names(what)[2] <- "relative_abundance"
-what$num <- 1
-
-
-
-ra <- decostand(t(final), "total")
-names(ra) 
-
-
-fung_by_class <- agg_by_tax(otu_tab[[1]], tax_tab, "Class")
-
-
-
 fung_site_tax <- lapply(fung_abun, function(x) fung_tax[fung_tax$denovo_OTU %in% rownames(x),])
 
 fung_tax_summ <- lapply(fung_site_tax, function(x) x %>% group_by(Class) %>% summarise(n = length(denovo_OTU)) %>% column_to_rownames("Class"))

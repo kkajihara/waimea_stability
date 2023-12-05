@@ -14,6 +14,7 @@ library(igraph)
 library(brainGraph)
 library(ggplot2)
 library(ggpubr)
+library(MetBrewer)
 
 options(bitmapType='cairo')
 ```
@@ -27,7 +28,7 @@ cross_gradient_networks <- readRDS("../../intermediates/gradient/terrestrial/cro
 # hub data
 fung_netcarto <- readRDS("../../intermediates/gradient/terrestrial/fung_gradient_netcarto_results.rds")
 bact_netcarto <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
-cross_netcarto <- readRDS("../../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
+cross_netcarto <- readRDS("../../intermediates/gradient/terrestrial/cross_gradient_netcarto_results.rds")
 
 
 fung_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
@@ -97,14 +98,14 @@ for (i in 1:length(fung_keystone_data)) {
   fung_key_rob_plots[[i]] <- ggplot(fung_robustness_data[[i]], aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
     labs(x="Percentage of nodes removed", y="Size of largest connected component",
        title=paste0(plots[[i]], ", ", nrow(fung_keystone_data[[i]]), " Keystone OTUs")) +
-    geom_line(linewidth=1.5) +
+    geom_line(size=1.5) +
   theme(legend.key = element_rect(fill="white")) +
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
         panel.background=element_blank(),
         axis.title = element_text(size=14),
         title=element_text(size=16)) +
-  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  scale_color_manual(values=met.brewer("Archambault")[3:4]) +
   theme(legend.text = element_text(size=12)) +
    theme(legend.title = element_text(size=14)) +
    guides(color = guide_legend(override.aes = list(size=10))) +
@@ -124,7 +125,7 @@ all_fung <- wrap_plots(fung_key_rob_plots) & theme(legend.position = "bottom")
 #plots <- plots & xlab(NULL) & ylab(NULL)
 all_fung <- all_fung + plot_layout(guides = "collect", nrow=2) 
 
-ggsave("../../figures/gradient/terrestrial/alternative_fung_keystone_removal_robustness_by_plot_fb.jpg", width=20, height=11)
+ggsave("../../figures/finals/gradient/alternative_fung_keystone_removal_robustness_by_plot_fb.pdf", width=20, height=11)
 
 
 ```
@@ -183,14 +184,14 @@ for (i in 1:length(bact_keystone_data)) {
   bact_key_rob_plots[[i]] <- ggplot(bact_robustness_data[[i]], aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
     labs(x="Percentage of nodes removed", y="Size of largest connected component",
        title=paste0(plots[[i]], ", ", nrow(bact_keystone_data[[i]]), " Keystone OTUs")) +
-    geom_line(linewidth=1.5) +
+    geom_line(size=1.5) +
   theme(legend.key = element_rect(fill="white")) +
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
         panel.background=element_blank(),
         axis.title = element_text(size=14),
         title=element_text(size=16)) +
-  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  scale_color_manual(values=met.brewer("Archambault")[3:4]) +
   theme(legend.text = element_text(size=12)) +
    theme(legend.title = element_text(size=14)) +
    guides(color = guide_legend(override.aes = list(size=10))) +
@@ -210,7 +211,7 @@ all_bact <- wrap_plots(bact_key_rob_plots) & theme(legend.position = "bottom")
 #plots <- plots & xlab(NULL) & ylab(NULL)
 all_bact <- all_bact + plot_layout(guides = "collect", nrow=2) 
 
-ggsave("../../figures/gradient/terrestrial/alternative_bact_keystone_removal_robustness_by_plot.jpg", width=20, height=11)
+ggsave("../../figures/finals/gradient/alternative_bact_keystone_removal_robustness_by_plot.pdf", width=20, height=11)
 
 
 ```
@@ -268,14 +269,14 @@ for (i in 1:length(cross_keystone_data)) {
   cross_key_rob_plots[[i]] <- ggplot(cross_robustness_data[[i]], aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
     labs(x="Percentage of nodes removed", y="Size of largest connected component",
        title=paste0(plots[[i]], ", ", nrow(cross_keystone_data[[i]]), " Keystone OTUs")) +
-    geom_line(linewidth=1.5) +
+    geom_line(size=1.5) +
   theme(legend.key = element_rect(fill="white")) +
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
         panel.background=element_blank(),
         axis.title = element_text(size=14),
         title=element_text(size=16)) +
-  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+ scale_color_manual(values=met.brewer("Archambault")[3:4]) +
   theme(legend.text = element_text(size=12)) +
    theme(legend.title = element_text(size=14)) +
    guides(color = guide_legend(override.aes = list(size=10))) +
@@ -291,12 +292,12 @@ for (i in 1:length(cross_keystone_data)) {
 names(cross_key_rob_plots) <- plots
 cross_key_rob_plots <- cross_key_rob_plots[c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")]
 
-
+library(patchwork)
 all_cross <- wrap_plots(cross_key_rob_plots) & theme(legend.position = "bottom")
 #plots <- plots & xlab(NULL) & ylab(NULL)
 all_cross <- all_cross + plot_layout(guides = "collect", nrow=2) 
 
-ggsave("../../figures/gradient/terrestrial/alternative_cross_keystone_removal_robustness_by_plot_fb.jpg", width=20, height=11)
+ggsave("../../figures/finals/gradient/alternative_cross_keystone_removal_robustness_by_plot_CORRECT.pdf", width=20, height=11)
 
 
 ```

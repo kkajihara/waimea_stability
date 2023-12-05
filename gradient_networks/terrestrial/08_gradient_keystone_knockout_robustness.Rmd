@@ -287,7 +287,6 @@ all_cross <- all_cross + plot_layout(guides = "collect", nrow=2)
 
 ggsave("../../figures/finals/gradient/cross_keystone_removal_robustness_by_plot.pdf", width=20, height=11)
 
-
 ```
 
 

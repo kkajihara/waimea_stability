@@ -22,8 +22,8 @@ options(bitmapType='cairo')
 Get metadata and otu names for each plot network
 
 ```{r}
-fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
-bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
+fung_data <- readRDS("../intermediates/habitat/fung_downsampled_otu_tables_by_hab.rds")
+bact_data <- readRDS("../intermediates/habitat/bact_downsampled_otu_tables_by_hab.rds")
 
 fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
 bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
@@ -310,3 +310,38 @@ saveRDS(list(weighted_fung_igraphs, weighted_bact_igraphs, weighted_cross_igraph
 
 ```
 
+## TEST on how much of interkingdom edges are pos/neg
+```{r}
+weighted_cross_igraphs <- readRDS("../intermediates/habitat/weighted_hab_igraphs.rds")[[3]]
+
+edgelists = lapply(weighted_cross_igraphs, function(x) as_data_frame(x)[, ])
+
+fung_bact <- lapply(edgelists, function(x) x[substr(x$from, 1, 3)!=substr(x$to, 1, 3),])
+
+fung_only <- lapply(edgelists, function(x) x[grepl("fung", x$from) & grepl("fung", x$to),])
+
+bact_only <- lapply(edgelists, function(x) x[grepl("bact", x$from) & grepl("bact", x$to),])
+
+out = data.frame(rbind(table(fung_only$sign), table(bact_only$sign), table(fung_bact$sign)))
+rownames(out) <- c("Fungi", "Bacteria", "Both")
+
+out$neg_pct <- out$negative/(out$negative + out$positive)
+
+try <- list(fung_only, bact_only, fung_bact)
+
+hm <- lapply(try, function(y) lapply(y, function(x) table(x$edge_sign)))
+
+wha <- lapply(hm, function(x) do.call("rbind", x))
+wha2 <- do.call("rbind", wha)
+
+final <- as.data.frame(wha2)
+
+final$kingdom <- c(rep("Fungi", 3), rep("Bacteria", 3), rep("Both", 3))
+final$habitat <- rep(habs, 3)
+
+final$neg_pct <- final$negative/(final$negative + final$positive)
+
+saveRDS(final, "../intermediates/habitat/table_of_interkingdom_edges_habitat.rds")
+
+
+```

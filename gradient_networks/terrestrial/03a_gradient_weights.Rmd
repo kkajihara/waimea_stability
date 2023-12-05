@@ -23,8 +23,8 @@ options(bitmapType='cairo')
 Get metadata and otu names for each plot network
 
 ```{r}
-fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
-bact_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
+fung_data <- readRDS("../../intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
+bact_data <- readRDS("../../intermediates/gradient/terrestrial/six_empos_bact_grad_data_ordered.rds")
 
 
 fung_meta_terr <- readRDS("../../intermediates/gradient/terrestrial/fung_terrestrial_metadata.rds")
@@ -324,6 +324,37 @@ ggsave("../../figures/finals/gradient/neg_edges_by_site.pdf", width=17, height=5
 saveRDS(list(fung_wt_tbl, bact_wt_tbl, cross_wt_tbl), "../../intermediates/gradient/terrestrial/neg_edges_gradient.rds")
 ```
 
+
+## TEST on how much of interkingdom edges are pos/neg
+```{r}
+cross_no_dummy 
+
+edgelists = lapply(cross_no_dummy, function(x) as_data_frame(x)[, ])
+
+fung_bact <- lapply(edgelists, function(x) x[substr(x$from, 1, 3)!=substr(x$to, 1, 3),])
+
+fung_only <- lapply(edgelists, function(x) x[grepl("fung", x$from) & grepl("fung", x$to),])
+
+bact_only <- lapply(edgelists, function(x) x[grepl("bact", x$from) & grepl("bact", x$to),])
+
+
+try <- list(fung_only, bact_only, fung_bact)
+
+hm <- lapply(try, function(y) lapply(y, function(x) table(x$edge_sign)))
+
+wha <- lapply(hm, function(x) do.call("rbind", x))
+wha2 <- do.call("rbind", wha)
+
+grad_final <- as.data.frame(wha2)
+
+grad_final$kingdom <- c(rep("Fungi", 7), rep("Bacteria", 7), rep("Both", 7))
+grad_final$site <- rep(plots, 3)
+
+grad_final$neg_pct <- grad_final$negative/(grad_final$negative + grad_final$positive)
+
+saveRDS(grad_final, "../../intermediates/gradient/table_of_interkingdom_edges_gradient.rds")
+
+```
 
 
 

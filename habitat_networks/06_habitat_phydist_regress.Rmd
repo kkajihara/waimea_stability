@@ -47,18 +47,29 @@ dat_for_gg$log_val <- log(dat_for_gg$richness)
 
 test_lm <- lm(rowSums(maybe, na.rm=TRUE) ~ mpd_data$mpd.obs.z)
 
-test_pl <- ggplot(dat_for_gg, aes(y=log_val, x = mpd)) +
+habitat_pl <- ggplot(dat_for_gg, aes(y=log_val, x = mpd)) +
   geom_point() +
-  ggtitle("Habitat Sample Richness vs MPD") +
+  ggtitle("Habitat") +
   #geom_smooth(method = "lm", se = FALSE) +
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
         panel.background=element_blank()) +
   scale_y_continuous(breaks = seq(8, 14, 2), limits = c(c(8, 14))) +
-  labs(subtitle = paste("Linear regression results:", "R2 =", round(summary(test_lm)$r.squared, 3), "P < 0.001"), x = "Mean Phylogenetic Distance Effect Scores", y = "log(Richness by Sample)")
+  labs(x = "Mean Phylogenetic Distance Effect Scores", y = "log(Richness by Sample)")
 
 ggsave("../figures/finals/habitat/hab_richness_vs_mpd_regression_plot.pdf", width=5, height=4)
 
+```
+
+
+# Make combined figure with gradient
+
+```{r}
+library(patchwork)
+
+twoplot <- habitat_pl + gradient_pl
+
+ggsave("../figures/finals/mpd_richness_regress_twoplot.pdf", width=10, height=4.5)
 ```
 
 
