@@ -1,0 +1,235 @@
+---
+title: "21_alternative_keystone_knockouts"
+output: html_document
+date: "2023-11-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(rnetcarto)
+library(igraph)
+library(dplyr)
+library(brainGraph)
+library(ggplot2)
+```
+
+```{r}
+filt_fung_net <- readRDS("../intermediates/global/weighted_filt_fung_net.rds")
+filt_bact_net <- readRDS("../intermediates/global/weighted_filt_bact_net.rds")
+filt_cross_net <- readRDS("../intermediates/global/weighted_filt_cross_net.rds")
+
+filt_cross_net <- delete_vertices(filt_cross_net, "dummy")
+
+fung_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+bact_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+```
+
+```{r}
+# fung_netcarto <- netcarto(get.adjacency(filt_fung_net, sparse = FALSE))
+# 
+# bact_netcarto <- netcarto(get.adjacency(filt_bact_net, sparse = FALSE))
+# 
+# cross_netcarto <- netcarto(get.adjacency(filt_cross_net, sparse = FALSE))
+# 
+# 
+# saveRDS(fung_netcarto, "../intermediates/global/down_fung_netcarto.rds")
+# saveRDS(bact_netcarto, "../intermediates/global/down_bact_netcarto.rds")
+# saveRDS(cross_netcarto, "../intermediates/global/down_cross_netcarto.rds")
+
+
+fung_netcarto <- readRDS("../intermediates/global/down_fung_netcarto.rds")
+bact_netcarto <- readRDS("../intermediates/global/down_bact_netcarto.rds")
+cross_netcarto <- readRDS("../intermediates/global/down_cross_netcarto.rds")
+
+
+fung_module_data <- fung_netcarto[[1]]
+bact_module_data <- bact_netcarto[[1]]
+cross_module_data <- cross_netcarto[[1]]
+```
+
+
+
+## Netcarto hub results
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+fung_hubs_only = fung_module_data[grep("Hub", fung_module_data$role, ignore.case=TRUE),]
+fung_hubs_only <- arrange(fung_hubs_only, desc(participation), desc(connectivity))
+
+fung_net_no_hubs <- delete_vertices(filt_fung_net, fung_hubs_only$name)
+
+
+
+# Calculate betweeness removal robustness
+fung_full_bc_robust <- robustness(filt_fung_net, type = "vertex", "btwn.cent")
+fung_full_bc_robust$Type <- "Full"
+
+fung_nohub_bc_robust <- robustness(fung_net_no_hubs, type = "vertex", "btwn.cent")
+fung_nohub_bc_robust$Type <- "Hubs Removed"
+
+fung_bc_hub_rob_data <- rbind(fung_full_bc_robust, fung_nohub_bc_robust)
+
+
+
+fung_key_plot <- ggplot(fung_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(size=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Fungi,", nrow(fung_hubs_only), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  #theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+
+#ggsave("../figures/global/fung_netcarto_hub_removal_robustness_curves.png", b, width=7, height=5)
+
+
+```
+
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+bact_hubs_only = bact_module_data[grep("Hub", bact_module_data$role, ignore.case=TRUE),]
+bact_hubs_only <- arrange(bact_hubs_only, desc(participation), desc(connectivity))
+
+bact_net_no_hubs <- delete_vertices(filt_bact_net, bact_hubs_only$name)
+
+
+
+# Calculate betweeness removal robustness
+bact_full_bc_robust <- robustness(filt_bact_net, type = "vertex", "btwn.cent")
+bact_full_bc_robust$Type <- "Full"
+
+bact_nohub_bc_robust <- robustness(bact_net_no_hubs, type = "vertex", "btwn.cent")
+bact_nohub_bc_robust$Type <- "Hubs Removed"
+
+bact_bc_hub_rob_data <- rbind(bact_full_bc_robust, bact_nohub_bc_robust)
+
+
+
+bact_key_plot <- ggplot(bact_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(size=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Bacteria,", nrow(bact_hubs_only), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  #theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+#ggsave("../figures/global/bact_netcarto_hub_removal_robustness_curves.png", width=7, height=5)
+
+
+```
+
+```{r}
+# netcarto result explore
+
+## definitions from Liu et al., 2022
+# module hubs (Zi ≥ 2.5, Pi < 0.62),  - peripheral hub, connector hub
+# network hubs (Zi ≥ 2.5, Pi ≥ 0.62), - none , maybe these would be the kinless hubs
+# connectors (Zi < 2.5, Pi ≥ 0.62) and  - connector
+# peripherals (Zi < 2.5, Pi < 0.62)
+
+cross_hubs_only = cross_module_data[grep("Hub", cross_module_data$role, ignore.case=TRUE),]
+cross_hubs_only <- arrange(cross_hubs_only, desc(participation), desc(connectivity))
+
+cross_net_no_hubs <- delete_vertices(filt_cross_net, cross_hubs_only$name)
+
+
+
+# Calculate betweeness removal robustness
+cross_full_bc_robust <- robustness(filt_cross_net, type = "vertex", "btwn.cent")
+cross_full_bc_robust$Type <- "Full"
+
+cross_nohub_bc_robust <- robustness(cross_net_no_hubs, type = "vertex", "btwn.cent")
+cross_nohub_bc_robust$Type <- "Hubs Removed"
+
+cross_bc_hub_rob_data <- rbind(cross_full_bc_robust, cross_nohub_bc_robust)
+
+
+
+cross_key_plot <- ggplot(cross_bc_hub_rob_data, aes(x=removed.pct, y=comp.pct, group=Type, color=Type)) +
+  geom_line(size=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=paste("Interkingdom,", nrow(cross_hubs_only), "Keystone OTUs")) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=13),
+        title=element_text(size=14)) +
+  scale_color_manual(values=c("#D81B60", "#1E88E5", "#DEA805")) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=13)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  #theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+#ggsave("../figures/global/cross_netcarto_hub_removal_robustness_curves.png", width=7, height=5)
+
+library(patchwork)
+all_plots <- fung_key_plot + bact_key_plot + cross_key_plot
+all_plots <- all_plots + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+
+ggsave("../figures/finals/global/alternative_keystone_knockout_robustness.pdf", width=17, height=6)
+
+
+```
+
+```{r}
+saveRDS(list(fung_bc_hub_rob_data, bact_bc_hub_rob_data, cross_bc_hub_rob_data), "../intermediates/global/robustness_data_hub_knockouts.rds")
+```
+
+
+
+

@@ -1,0 +1,381 @@
+---
+title: "16_compile_figures"
+output: html_document
+date: "2023-09-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(brainGraph)
+library(patchwork)
+library(stringr)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# metadata
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+habs <- unique(fung_meta$habitat)
+```
+
+## Figure 2: Whole watershed robustness + habitat robustness curves (4 plots)
+
+```{r}
+# whole watershed
+filt_fung_net <- readRDS("../intermediates/global/downsampled_fung_network.rds")
+filt_bact_net <- readRDS("../intermediates/global/downsampled_bact_network.rds")
+filt_cross_net <- readRDS("../intermediates/global/downsampled_cross_network.rds")
+# Calculate betweenness removal robustness
+fung_btwn_robustness <- robustness(filt_fung_net, type = "vertex", "btwn.cent")
+fung_btwn_robustness$domain <- "Fungi"
+
+# Calculate betweenness removal robustness
+bact_btwn_robustness <- robustness(filt_bact_net, type = "vertex", "btwn.cent")
+bact_btwn_robustness$domain <- "Bacteria"
+
+# Calculate betweenness removal robustness
+cross_btwn_robustness <- robustness(filt_cross_net, type = "vertex", "btwn.cent")
+cross_btwn_robustness$domain <- "Interkingdom"
+
+
+all_node_robustness_btwn <- do.call("rbind", list(fung_btwn_robustness, bact_btwn_robustness, cross_btwn_robustness))
+
+all_node_robustness_btwn$domain <- factor(all_node_robustness_btwn$domain, c("Fungi", "Bacteria", "Interkingdom"))
+
+
+b <- ggplot(all_node_robustness_btwn, aes(x=removed.pct, y=comp.pct, group=domain, color=domain)) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Watershed-level Networks", color="Kingdom") +
+  geom_line(linewidth=1.5) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  scale_color_manual(values = c("#5d8ca8ff", "#d5695dff", "#D3Ba68ff")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+
+# habitat
+hab_node_robustness_btwn <- readRDS("../intermediates/habitat/robustness_data_by_habitat.rds")
+hab_node_robustness_btwn <- hab_node_robustness_btwn %>% mutate(domain = str_replace(domain, "Cross", "Interkingdom"))
+
+hab_node_robustness_btwn$domain <- factor(hab_node_robustness_btwn$domain, c("Fungi", "Bacteria", "Interkingdom"))
+
+bc_by_domain <- list()
+for (i in 1:3) {
+  dat <- hab_node_robustness_btwn[hab_node_robustness_btwn$habitat==habs[i],]
+  
+  my_plot <- ggplot(dat, aes(x=removed.pct, y=comp.pct, group=domain, color=domain)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title=habs[i], color="Kingdom") +
+    theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  scale_color_manual(values = c("#5d8ca8ff", "#d5695dff", "#D3Ba68ff")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+  
+  bc_by_domain[[i]] <- my_plot
+  
+}
+
+names(bc_by_domain) <- habs
+bc_by_domain <- bc_by_domain[c("Marine","Riverine", "Terrestrial")]
+
+
+# patchwork
+b <- b + theme(legend.position = "none")
+
+bc_by_domain[[1]] <- bc_by_domain[[1]] + theme(
+    legend.position = c(.95, .95),
+    legend.justification = c("right", "top"),
+    legend.box.just = "right",
+    legend.margin = margin(0.1, 0.1, 0.1, 0.1)
+    )
+
+bc_by_domain[[2]] <- bc_by_domain[[2]] + theme(legend.position = "none")
+
+bc_by_domain[[3]] <- bc_by_domain[[3]] + theme(legend.position = "none")
+
+
+tog <- b + bc_by_domain[[1]] + bc_by_domain[[2]] + bc_by_domain[[3]]
+
+ggsave("../figures/finals/global/fig2_rough.pdf", width = 12.5, height = 12)
+
+```
+
+
+## Figure 4: Habitat robustness and mpd boxplots
+
+```{r}
+all_node_robustness_btwn <- readRDS("../intermediates/habitat/robustness_data_by_habitat.rds")
+
+all_node_robustness_btwn <- all_node_robustness_btwn %>% mutate(domain = str_replace(domain, "Cross", "Interkingdom"))
+
+fung_bc_rob <- all_node_robustness_btwn[all_node_robustness_btwn$domain=="Fungi",]
+bact_bc_rob <- all_node_robustness_btwn[all_node_robustness_btwn$domain=="Bacteria",]
+cross_bc_rob <- all_node_robustness_btwn[all_node_robustness_btwn$domain=="Interkingdom",]
+
+
+
+bc_its_plot <- ggplot(fung_bc_rob, aes(x=removed.pct, y=comp.pct, group=habitat, color=habitat)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Fungi", color = "Habitat") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  scale_color_manual(values = c("#77B6EA", "#373F51", "#BC9CB0")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+  theme(legend.position = "none")
+
+bc_16s_plot <- ggplot(bact_bc_rob, aes(x=removed.pct, y=comp.pct, group=habitat, color=habitat)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Bacteria", color = "Habitat") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  scale_color_manual(values = c("#77B6EA", "#373F51", "#BC9CB0")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))  +
+  theme(
+    legend.position = c(.95, .95),
+    legend.justification = c("right", "top"),
+    legend.box.just = "right",
+    legend.margin = margin(0.1, 0.1, 0.1, 0.1)
+    )
+
+bc_cross_plot <- ggplot(cross_bc_rob, aes(x=removed.pct, y=comp.pct, group=habitat, color=habitat)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Interkingdom", color="Habitat") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  scale_color_manual(values = c("#77B6EA", "#373F51", "#BC9CB0")) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+  theme(legend.position = "none")
+
+
+# boxplot
+samp_dat <- readRDS("../intermediates/habitat/picante_by_sample_habitat_results.rds")
+samp_dat$sample <- rownames(samp_dat)
+full_bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+samp_dat$habitat <- full_bact_meta$habitat[match(samp_dat$sample, full_bact_meta$sample_id)]
+
+
+library(wesanderson)
+mpd_bar <- ggplot(samp_dat, aes(x=habitat, y=mpd.obs.z)) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.8, alpha=0.7, width=0.2) +
+    geom_boxplot(width=0.5,fill = wes_palette("GrandBudapest2")[2]) +
+    scale_y_continuous(breaks = seq(-3, 4, 3), limits = c(c(-3, 4))) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.background=element_blank(),
+          axis.line = element_line(colour="black"),
+          axis.text.y = element_text(size=12, colour="black"),
+          axis.title = element_text(size=16),
+          plot.title = element_text(size=18),
+          legend.position = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  labs(title= "Mean Phylogenetic Distances", y = "Standardized Effect Score", x="Habitat")
+
+
+fig4 <- bc_its_plot + bc_16s_plot + bc_cross_plot + mpd_bar
+
+ggsave("../figures/finals/global/fig4_rough_v2.pdf", fig4, width = 12.5, height = 12)
+
+```
+
+
+## Figure 5: Gradient robustness and mpd boxplot
+
+```{r}
+all_node_robustness_bc <- readRDS("../intermediates/gradient/terrestrial/robustness_data_by_plot.rds")
+
+fung_bc_rob <- all_node_robustness_bc[all_node_robustness_bc$domain=="Fungi",]
+bact_bc_rob <- all_node_robustness_bc[all_node_robustness_bc$domain=="Bacteria",]
+cross_bc_rob <- all_node_robustness_bc[all_node_robustness_bc$domain=="Cross",]
+
+
+bc_its_plot <- ggplot(fung_bc_rob, aes(x=removed.pct, y=comp.pct, group=plot, color=plot)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Fungi", color="Plot") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+  theme(legend.position = "none")
+
+
+#scale_color_manual(values=c("#ee6677", "#33bbee", "#ffae34"))
+
+
+
+bc_16s_plot <- ggplot(bact_bc_rob, aes(x=removed.pct, y=comp.pct, group=plot, color=plot)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Bacteria", color="Site") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+    theme(
+    legend.position = c(.95, .95),
+    legend.justification = c("right", "top"),
+    legend.box.just = "right",
+    legend.margin = margin(0.1, 0.1, 0.1, 0.1)
+    )
+
+
+
+bc_cross_plot <- ggplot(cross_bc_rob, aes(x=removed.pct, y=comp.pct, group=plot, color=plot)) +
+  geom_line(linewidth=1.5) +
+  labs(x="Percentage of nodes removed", y="Size of largest connected component",
+       title="Interkingdom", color="Plot") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        axis.title = element_text(size=16),
+        title=element_text(size=18),
+        axis.text = element_text(color="black", size = 12)) +
+  theme(legend.text = element_text(size=16)) +
+   theme(legend.title = element_text(size=18)) +
+   guides(color = guide_legend(override.aes = list(size=12))) +
+  theme(plot.margin = margin(0,25,0,0)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+  theme(legend.position = "none")
+
+
+## mpd
+samp_dat <- readRDS("../intermediates/gradient/terrestrial/picante_by_sample_results.rds")
+samp_dat$sample <- rownames(samp_dat)
+
+samp_dat$plot <- full_bact_meta$site_name[match(samp_dat$sample, full_bact_meta$sample_id)]
+samp_dat$plot <- factor(samp_dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+
+
+library(wesanderson)
+mpd_bar <- ggplot(samp_dat, aes(x=plot, y=mpd.obs.z)) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[4], size=0.8, alpha=0.7, width=0.2) +
+    geom_boxplot(width=0.5,fill = wes_palette("GrandBudapest2")[4]) +
+    scale_y_continuous(breaks = seq(-4, 5, 2), limits = c(c(-4, 5))) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.background=element_blank(),
+          axis.line = element_line(colour="black"),
+          axis.text.y = element_text(size=12, colour="black"),
+          axis.title = element_text(size=16),
+          plot.title = element_text(size=18),
+          legend.position = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+    labs(title= "Mean Phylogenetic Distances", y = "Standardized Effect Score", x="Habitat")
+
+
+fig5 <- bc_its_plot + bc_16s_plot + bc_cross_plot + mpd_bar
+
+ggsave("../figures/finals/global/fig5_rough_v2.pdf", fig5, width = 14.75, height = 14)
+```
+
+
+
+
+
+
+

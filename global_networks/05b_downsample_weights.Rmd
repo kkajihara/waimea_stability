@@ -1,0 +1,151 @@
+---
+title: "13a_downsample_modularity"
+output: html_document
+date: "2023-08-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(SpiecEasi)
+library(igraph)
+```
+
+```{r}
+filt_fung_net <- readRDS("../intermediates/global/downsampled_fung_network.rds")
+filt_bact_net <- readRDS("../intermediates/global/downsampled_bact_network.rds")
+filt_cross_net <- readRDS("../intermediates/global/downsampled_cross_network.rds")
+
+filt_fung_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+filt_bact_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+
+filt_fung_abun <- filt_fung_abun[rownames(filt_fung_abun)!="dummy",]
+filt_bact_abun <- filt_bact_abun[rownames(filt_bact_abun)!="dummy",]
+
+
+# import spieceasi objects
+cross20_net <- readRDS("../networks/prev20/outputs/crossdom_prev20_mb_thresh01_with_dummy.rds")
+fung20_net <- readRDS("../networks/prev20/outputs/fung_prev20_mb_thresh01_with_dummy.rds")
+bact20_net <- readRDS("../networks/prev20/outputs/bact_prev20_mb_thresh01_with_dummy.rds")
+
+# import metadata
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+cross_data_names <- c(rownames(fung_abun),rownames(bact_abun))
+```
+
+```{r}
+# add weights
+optbeta <- as.matrix(symBeta(getOptBeta(fung20_net)))
+edge_cols <-  ifelse(optbeta>0, 'positive', 'negative')[upper.tri(optbeta) & optbeta!=0]
+fung_ig <- adj2igraph(getRefit(fung20_net),  rmEmptyNodes=FALSE,
+                                    vertex.attr=list(name=rownames(fung_abun)),
+                                    edge.attr=list(sign= edge_cols))
+
+fung_remove <- rownames(fung_abun)[!(rownames(fung_abun) %in% rownames(filt_fung_abun))]
+
+weighted_filt_fung_net <- delete_vertices(fung_ig, fung_remove)
+
+saveRDS(weighted_filt_fung_net, "../intermediates/global/weighted_filt_fung_net.rds")
+
+fung_wt <- table(E(weighted_filt_fung_net)$sign)
+
+
+fung_gg <- ggnetwork(asNetwork(weighted_filt_fung_net), layout = "fruchtermanreingold")
+#dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+
+fung_ggnet <- ggplot(fung_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(linewidth = 0.2, aes(color=sign)) +
+  geom_nodes(color = "#A6CEE3") +
+  scale_color_manual(values=c("red", "forestgreen")) +
+  theme_blank() 
+
+
+
+
+# add weights
+bact_optbeta <- as.matrix(symBeta(getOptBeta(bact20_net)))
+bact_edge_cols <-  ifelse(bact_optbeta>0, 'positive', 'negative')[upper.tri(bact_optbeta) & bact_optbeta!=0]
+bact_ig <- adj2igraph(getRefit(bact20_net),  rmEmptyNodes=FALSE,
+                                    vertex.attr=list(name=rownames(bact_abun)),
+                                    edge.attr=list(sign= bact_edge_cols))
+
+bact_remove <- rownames(bact_abun)[!(rownames(bact_abun) %in% rownames(filt_bact_abun))]
+
+weighted_filt_bact_net <- delete_vertices(bact_ig, bact_remove)
+
+saveRDS(weighted_filt_bact_net, "../intermediates/global/weighted_filt_bact_net.rds")
+
+bact_wt <- table(E(weighted_filt_bact_net)$sign)
+
+
+bact_gg <- ggnetwork(asNetwork(weighted_filt_bact_net), layout = "fruchtermanreingold")
+#dat$domain <- ifelse(grepl("bact", dat$vertex.names), "bacti", "Bacteria")
+
+bact_ggnet <- ggplot(bact_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(linewidth = 0.2, aes(color=sign)) +
+  geom_nodes(color = "#A6CEE3") +
+  scale_color_manual(values=c("red", "forestgreen")) +
+  theme_blank() 
+
+
+
+
+# add weights
+cross_optbeta <- as.matrix(symBeta(getOptBeta(cross20_net)))
+cross_edge_cols <-  ifelse(cross_optbeta>0, 'positive', 'negative')[upper.tri(cross_optbeta) & cross_optbeta!=0]
+cross_ig <- adj2igraph(getRefit(cross20_net),  rmEmptyNodes=FALSE,
+                                    vertex.attr=list(name=cross_data_names),
+                                    edge.attr=list(sign= cross_edge_cols))
+
+cross_remove <- c(fung_remove, bact_remove)
+
+weighted_filt_cross_net <- delete_vertices(cross_ig, c(fung_remove, bact_remove))
+
+saveRDS(weighted_filt_cross_net, "../intermediates/global/weighted_filt_cross_net.rds")
+
+cross_wt <- table(E(weighted_filt_cross_net)$sign)
+
+
+cross_gg <- ggnetwork(asNetwork(weighted_filt_cross_net), layout = "fruchtermanreingold")
+#dat$domain <- ifelse(grepl("cross", dat$vertex.names), "crossi", "crosseria")
+
+cross_ggnet <- ggplot(cross_gg, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(linewidth = 0.2, aes(color=sign)) +
+  geom_nodes(color = "#A6CEE3") +
+  scale_color_manual(values=c("red", "forestgreen")) +
+  theme_blank() 
+
+```
+
+```{r}
+dat <- as.data.frame(do.call("rbind", list(fung_wt, bact_wt, cross_wt)))
+
+dat$total <- dat$negative + dat$positive
+dat$neg_pct <- dat$negative / dat$total
+dat$pos_pct <- dat$positive / dat$total
+
+dat$domain <- c("Fungi", "Bacteria", "Interkingdom")
+dat$domain <- factor(dat$domain, levels = c("Fungi", "Bacteria", "Interkingdom"))
+
+saveRDS(dat, "../intermediates/global/neg_edge_pcts.rds")
+
+pl <- ggplot(dat, aes(x = domain, y = neg_pct)) +
+    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[2:4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black",margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black", margin=margin(5,0,0,0))) +
+    #theme(axis.title.x=element_blank()) +
+    scale_y_continuous(breaks = seq(0, 0.25, 0.05), limits = c(c(0, 0.25))) +
+    labs(y = "% Negative Edges", x = "Kingdom")
+
+ggsave("../figures/finals/global/down_neg_edges_by_domain.pdf", width=6, height=4.5)
+```
+
+
+
