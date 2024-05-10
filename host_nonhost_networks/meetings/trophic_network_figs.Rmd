@@ -1,0 +1,96 @@
+---
+title: "trophic_network_figs"
+output: html_document
+date: "2024-04-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r set-options, echo=FALSE, cache=FALSE}
+# to get graphic display to work?
+options(bitmapType='cairo')
+options(scipen=9999)
+options(width = 800)
+library(knitr)
+```
+
+### Network visualizations
+
+Fungi
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/downsamp_fung_troph_network_plots.png")
+```
+
+Bacteria
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/downsamp_bact_troph_network_plots.png")
+```
+
+Interkingdom
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/dowmsamp_cross_troph_network_plots.png")
+```
+
+### Robustness
+
+By trophic
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/trophic_btwn_robustness_for_affinity.png")
+```
+
+By kingdom
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/trophic_btwn_robustness_by_domain_for_affinity.png")
+```
+
+
+### Keystone removal (original method)
+
+Fungi
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/fung_keystone_removal_robustness_by_troph_for_affinity.png")
+```
+
+Bacteria
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/bact_keystone_removal_robustness_by_troph_for_affinity.png")
+```
+
+Interkingdom
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/cross_keystone_removal_robustness_by_troph_for_affinity.png")
+```
+
+
+### Keystone removal (alternative method)
+
+Fungi
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/alternative_fung_keystone_removal_robustness_by_troph.png")
+```
+
+Bacteria
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/alternative_bact_keystone_removal_robustness_by_troph.png")
+```
+
+Interkingdom
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/alternative_cross_keystone_removal_robustness_by_troph.png")
+```
+
+
+### Network topology
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/trophic_metrics_collected.png")
+```
+
+
+### Negative edges
+```{r, echo=FALSE, out.width = "100%"}
+knitr::include_graphics("../../figures/finals/trophic/neg_edges_by_trophic.png")
+```
+
+

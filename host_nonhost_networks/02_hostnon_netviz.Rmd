@@ -1,0 +1,238 @@
+---
+title: "02_hostenv_netviz"
+output: html_document
+date: "2024-04-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(SpiecEasi)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(ggpubr)
+
+options(bitmapType='cairo')
+
+```
+
+Get metadata and otu names for each plot network
+
+```{r}
+fung_data <- readRDS("../intermediates/hostnon/fung_hostnon_abun_for_networks.rds")
+bact_data <- readRDS("../intermediates/hostnon/bact_hostnon_abun_for_networks.rds")
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+
+df <- data.frame(fungi = unlist(lapply(fung_data, function(x) dim(x)[1])),
+                 bacteria = unlist(lapply(bact_data, function(x) dim(x)[1])))
+df$interkingdom <- df$fungi + df$bacteria
+
+```
+
+## ITS
+
+```{r}
+
+fung_host_net <- readRDS("../networks/prev20/hostnon/outputs/fung_host_network_p20_mb_thresh01.rds")
+fung_nonhost_net <- readRDS("../networks/prev20/hostnon/outputs/fung_nonhost_network_p20_mb_thresh01.rds") 
+
+fung_hostnon_networks <- list(fung_nonhost_net, fung_host_net)
+
+fung_vertex_names <- lapply(fung_data, rownames)
+
+lapply(fung_hostnon_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+fung_igraphs <- list()
+
+for (i in 1:length(fung_hostnon_networks)) {
+  ig <- adj2igraph(getRefit(fung_hostnon_networks[[i]]),
+                   vertex.attr=list(name=fung_vertex_names[[i]]))
+  
+  fung_igraphs[[i]] <- ig
+}
+
+
+fung_no_dummy <- lapply(fung_igraphs, function(x) delete_vertices(x, "dummy"))
+
+saveRDS(fung_no_dummy, "../intermediates/hostnon/fung_hostnon_igraphs.rds")
+
+
+## visualization
+fung_no_dummy <- readRDS("../intermediates/fung_hostnon_igraphs.rds")
+
+empo1 <- c("Free-living", "Host-associated")
+
+fung_net_plots <- list()
+
+for (i in 1:length(fung_no_dummy)) {
+  set.seed(123)
+  
+  gg <- ggplot(ggnetwork(asNetwork(fung_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", size = 0.1) +
+  geom_nodes(color = "#1F78B4") +
+  theme_blank() +
+  #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+  labs(title = empo1[i])
+  
+  fung_net_plots[[i]] <- gg
+}
+
+#names(fung_net_plots) <- hostnons
+
+all_fung <- ggarrange(plotlist = fung_net_plots,
+                      ncol = 2,
+                      nrow = 1) + bgcolor("white")
+
+ggsave("../figures/finals/hostnon/fung_hostnon_network_plots.pdf", all_fung, width=12.5, height=6)
+ggsave("../figures/finals/hostnon/fung_hostnon_network_plots.png", all_fung, width=12.5, height=6)
+
+```
+
+# 16S
+
+```{r}
+
+bact_host_net <- readRDS("../networks/prev20/hostnon/outputs/bact_host_network_p20_mb_thresh01.rds")
+bact_nonhost_net <- readRDS("../networks/prev20/hostnon/outputs/bact_nonhost_network_p20_mb_thresh01.rds") 
+
+bact_hostnon_networks <- list(bact_nonhost_net, bact_host_net)
+
+bact_vertex_names <- lapply(bact_data, rownames)
+
+lapply(bact_hostnon_networks, function(x) sum(getRefit(x))/2)
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+bact_igraphs <- list()
+
+for (i in 1:length(bact_hostnon_networks)) {
+  ig <- adj2igraph(getRefit(bact_hostnon_networks[[i]]),
+                   vertex.attr=list(name=bact_vertex_names[[i]]))
+  
+  bact_igraphs[[i]] <- ig
+}
+
+
+bact_no_dummy <- lapply(bact_igraphs, function(x) delete_vertices(x, "dummy"))
+
+saveRDS(bact_no_dummy, "../intermediates/hostnon/bact_hostnon_igraphs.rds")
+
+
+## visualization
+bact_no_dummy <- readRDS("../intermediates/bact_hostnon_igraphs.rds")
+
+bact_net_plots <- list()
+
+for (i in 1:length(bact_no_dummy)) {
+  set.seed(123)
+  
+  gg <- ggplot(ggnetwork(asNetwork(bact_no_dummy[[i]]), layout = "fruchtermanreingold"), aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", size = 0.1) +
+  geom_nodes(color = "#A6CEE3") +
+  theme_blank() +
+  #scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4"
+  labs(title = empo1[i])
+  
+  bact_net_plots[[i]] <- gg
+}
+
+#names(bact_net_plots) <- hostnons
+
+all_bact <- ggarrange(plotlist = bact_net_plots,
+                      ncol = 2,
+                      nrow = 1) + bgcolor("white")
+
+ggsave("../figures/finals/hostnon/bact_hostnon_network_plots.pdf", all_bact, width=12.5, height=6)
+ggsave("../figures/finals/hostnon/bact_hostnon_network_plots.png", all_bact, width=12.5, height=6)
+
+```
+
+## Cross-domain
+
+```{r}
+
+cross_host_net <- readRDS("../networks/prev20/hostnon/outputs/crossdom_host_network_p20_mb_thresh01.rds")
+cross_nonhost_net <- readRDS("../networks/prev20/hostnon/outputs/crossdom_nonhost_network_p20_mb_thresh01.rds") 
+cross_hostnon_networks <- list(cross_nonhost_net, cross_host_net)
+
+lapply(cross_hostnon_networks, function(x) sum(getRefit(x))/2)
+
+
+cross_vertex_names <- list()
+
+for (i in 1:2) {
+  cross_names <- c(fung_vertex_names[[i]], bact_vertex_names[[i]])
+  cross_vertex_names[[i]] <- cross_names
+}
+
+# getOptInd(se)
+# 
+# sum(getRefit(se))/2
+
+
+cross_igraphs <- list()
+
+for (i in 1:length(cross_hostnon_networks)) {
+  ig <- adj2igraph(getRefit(cross_hostnon_networks[[i]]),
+                   vertex.attr=list(name=cross_vertex_names[[i]]))
+  
+  cross_igraphs[[i]] <- ig
+}
+
+
+cross_no_dummy <- lapply(cross_igraphs, function(x) delete_vertices(x, "dummy"))
+cross_no_dummy <- lapply(cross_no_dummy, function(x) delete_vertices(x, "dummy"))
+
+
+saveRDS(cross_no_dummy, "../intermediates/hostnon/cross_hostnon_igraphs.rds")
+
+
+## visualization
+cross_net_plots <- list()
+
+for (i in 1:length(cross_no_dummy)) {
+  set.seed(123)
+  
+  dat <- ggnetwork(asNetwork(cross_no_dummy[[i]]), layout = "fruchtermanreingold")
+  dat$domain <- ifelse(grepl("fung", dat$vertex.names), "Fungi", "Bacteria")
+
+  
+  gg <- ggplot(dat, aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(color = "grey20", size = 0.1) +
+  geom_nodes(aes(color = domain)) +
+  theme_blank() +
+  scale_color_brewer(palette = "Paired") + # "#A6CEE3" "#1F78B4" +
+    guides(color = guide_legend(override.aes = list(size=5))) +
+  labs(title = empo1[i], color = "Domain")
+  
+  cross_net_plots[[i]] <- gg
+}
+
+
+all_cross <- ggarrange(plotlist = cross_net_plots,
+                      ncol = 2,
+                      nrow = 1,
+                      common.legend = TRUE,
+                      legend = "bottom") + bgcolor("white")
+
+ggsave("../figures/finals/hostnon/cross_hostnon_network_plots.pdf",all_cross, width=14, height=6)
+ggsave("../figures/finals/hostnon/cross_hostnon_network_plots.png",all_cross, width=14, height=6)
+
+```
+
+
+

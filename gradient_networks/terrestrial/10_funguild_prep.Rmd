@@ -19,7 +19,7 @@ library(stringr)
 ```{r}
 fung_tax <- readRDS("../../intermediates/global/fung_seed_taxonomy.rds")
 
-fung_data <- readRDS("~/cmaiki_lts/kaciekaj/waimea/intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
+fung_data <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/gradient/terrestrial/six_empos_fung_grad_data_ordered.rds")
 
 
 remove_dummy_row <- function(df) {

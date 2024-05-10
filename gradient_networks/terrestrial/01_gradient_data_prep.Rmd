@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Goal: Figure out which samples and EMPO3 categories are going to be used for the gradient analysis
 Want to have apples to apples, by taking the lowest common sample number within empo category across plots
 
-For example, if all plots have at least 3 instances of plant corpus, even if one plot has 7, just take the top 3.
+For example, if all plots have at least 3 instances of plant corpus, even if one plot has 7, just take 3 (at random).
 
 ```{r}
 library(dplyr)
@@ -65,7 +65,7 @@ fung_terr_min_df <- fung_terr_samp_counts %>% dplyr::group_by(empo_3) %>% dplyr:
 ```
 
 
-Okay I have the minimum sample counts, now how to take the top x samples from each empo3 category in a plot...
+Okay I have the minimum sample counts, now to take x samples from each empo3 category in a plot...
 
 ```{r}
 
@@ -80,7 +80,7 @@ fung_terr_min_df <- fung_terr_min_df[fung_terr_min_df$empo_3 %in% empos,]
 
 plots <- unique(fung_meta_terr$site_name)
 
-take_top <- function(empo, abun, meta, min_count_df) {
+take_random <- function(empo, abun, meta, min_count_df) {
   sub_met <- meta[meta$empo_3==empo,]
   
   sub_abun <- abun[,names(abun) %in% sub_met$sample_id]
@@ -112,7 +112,7 @@ take_top <- function(empo, abun, meta, min_count_df) {
 
 
 fung_empo_list <- lapply(empos,
-                   take_top,
+                   take_random,
                    abun = fung_abun_terr,
                    meta = fung_meta_terr,
                    min_count_df = fung_terr_min_df)
