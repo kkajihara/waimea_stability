@@ -12,6 +12,8 @@ diverse habitats and hosts to infer universally stabilizing network properties o
   * code to reproduce gradient-level network analyses
 * **habitat_networks**
   * code to reproduce habitat-level network analyses
+* **host_nonhost_networkss**
+  * code to reproduce sample type (host vs nonhost) network analyses
 * **intermediates**
   * RDS files used as the main inputs for the above code
   * Full taxa tables, metadata, and other files are linked at [https://www.pnas.org/doi/10.1073/pnas.2204146119#data-availability]
