@@ -1,0 +1,82 @@
+---
+title: "10_fractional_size_exploration"
+output: html_document
+date: "2024-10-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(igraph)
+```
+
+```{r}
+# networks
+fullws_fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+fullws_bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+fullws_cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+fung_grad_igraphs <- fung_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_igraphs <- bact_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_igraphs <- cross_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+```
+
+```{r}
+g = fullws_fung_net
+
+calc_netpct <- function(g) {
+  x = max(components(g)$csize) / gorder(g)
+  
+  return(x)
+}
+
+
+calc_netpct(fullws_fung_net)
+calc_netpct(fullws_bact_net)
+calc_netpct(fullws_cross_net)
+
+sapply(fung_hab_igraphs, calc_netpct)
+sapply(bact_hab_igraphs, calc_netpct)
+sapply(cross_hab_igraphs, calc_netpct)
+
+sapply(fung_grad_igraphs, calc_netpct)
+sapply(bact_grad_igraphs, calc_netpct)
+sapply(cross_grad_igraphs, calc_netpct)
+
+
+
+df <- readRDS("../intermediates/new_knockouts/all_auc_values.rds")
+df <- df[,1:2]
+
+df$largest_component <- c(
+  calc_netpct(fullws_fung_net),
+  calc_netpct(fullws_bact_net),
+  calc_netpct(fullws_cross_net),
+  
+  sapply(fung_hab_igraphs, calc_netpct),
+  sapply(bact_hab_igraphs, calc_netpct),
+  sapply(cross_hab_igraphs, calc_netpct),
+  
+  sapply(fung_grad_igraphs, calc_netpct),
+  sapply(bact_grad_igraphs, calc_netpct),
+  sapply(cross_grad_igraphs, calc_netpct)
+)
+
+write.csv(df, "../outputs/largest_component_fraction.csv")
+```
+
+
+
+
+
+

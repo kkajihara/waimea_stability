@@ -60,15 +60,5 @@ ggsave("../figures/finals/hostnon/hostnon_richness_vs_mpd_regression_plot.pdf", 
 ```
 
 
-# Make combined figure with gradient
-
-```{r}
-library(patchwork)
-
-twoplot <- habitat_pl + gradient_pl
-
-ggsave("../figures/finals/mpd_richness_regress_twoplot.pdf", width=10, height=4.5)
-```
-
 
 

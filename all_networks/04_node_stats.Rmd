@@ -1,0 +1,364 @@
+---
+title: "04_node_stats"
+output: html_document
+date: "2024-09-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(igraph)
+```
+
+
+Run degree and betweenness centrality at the node level for all networks (watershed, habitat, gradient). Do ANOVA and Tukey's tests.
+
+```{r}
+# read in networks
+
+# watershed
+fung_ws <- readRDS("../intermediates/global/weighted_filt_fung_net.rds")
+bact_ws <- readRDS("../intermediates/global/weighted_filt_bact_net.rds")
+cross_ws <- readRDS("../intermediates/global/weighted_filt_cross_net.rds")
+
+cross_ws <- delete_vertices(cross_ws, "dummy")
+
+kingdoms <- c("Fungi", "Bacteria", "Interkingdom")
+
+# habitat
+fung_hab <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+habitats <- c("Stream", "Terrestrial", "Marine")
+
+# gradient
+fung_grad <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+# reorder sites from bottom to top of watershed
+fung_grad <- fung_grad[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad <- bact_grad[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad <- cross_grad[c(6, 5, 1, 2, 3, 4, 7)]
+
+gradient_sites <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+```
+
+# Degree
+
+```{r}
+# watershed
+watershed_degree <- sapply(list(fung_ws, bact_ws, cross_ws), degree)
+
+watershed_df <- data.frame(OTU = names(unlist(watershed_degree)),
+                           degree = unlist(watershed_degree),
+                           kingdom = c(rep("Fungi", gorder(fung_ws)),
+                                       rep("Bacteria", gorder(bact_ws)),
+                                       rep("Interkingdom", gorder(cross_ws)))
+                           )
+
+ws_lm <- lm(degree ~ kingdom, data = watershed_df)
+ws_anova <- aov(ws_lm)
+ws_tuk <- as.data.frame(TukeyHSD(ws_anova)$kingdom)
+
+
+# habitat
+fung_hab_deg <- sapply(fung_hab, degree)
+bact_hab_deg <- sapply(bact_hab, degree)
+cross_hab_deg <- sapply(cross_hab, degree)
+
+make_hab_table <- function(data_list, kingdom, igraph_list) {
+  df = data.frame(OTU = names(unlist(data_list)),
+                           degree = unlist(data_list),
+                           habitat = c(rep("Stream", gorder(igraph_list[[1]])),
+                                       rep("Terrestrial", gorder(igraph_list[[2]])),
+                                       rep("Marine", gorder(igraph_list[[3]]))),
+                           type = kingdom
+                           )
+  return(df)
+}
+
+fung_hab_deg <- make_hab_table(data_list = fung_hab_deg, 
+                               kingdom = "Fungi",
+                               igraph_list = fung_hab)
+
+bact_hab_deg <- make_hab_table(data_list = bact_hab_deg, 
+                               kingdom = "Bacteria",
+                               igraph_list = bact_hab)
+
+cross_hab_deg <- make_hab_table(data_list = cross_hab_deg, 
+                               kingdom = "Interkingdom",
+                               igraph_list = cross_hab)
+
+
+run_deg_stats <- function(df) {
+  my_lm <- lm(degree ~ habitat, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$habitat)
+  
+  return(my_tuk)
+}
+
+kingdom_hab_tuk <- lapply(list(fung_hab_deg, bact_hab_deg, cross_hab_deg),
+                          run_deg_stats)
+
+names(kingdom_hab_tuk) <- kingdoms
+
+
+# then make tables by habitat
+all_hab_dat <- rbind(fung_hab_deg, bact_hab_deg, cross_hab_deg)
+
+stream_dat <- all_hab_dat[all_hab_dat$habitat=="Stream",]
+terr_dat <- all_hab_dat[all_hab_dat$habitat=="Terrestrial",]
+marine_dat <- all_hab_dat[all_hab_dat$habitat=="Marine",]
+
+run_deg_stats_v2 <- function(df) {
+  my_lm <- lm(degree ~ type, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$type)
+  
+  return(my_tuk)
+}
+
+hab_hab_tuk <- lapply(list(stream_dat, terr_dat, marine_dat),
+                          run_deg_stats_v2)
+
+names(hab_hab_tuk) <- habitats
+
+# gradient
+fung_grad_deg <- sapply(fung_grad, degree)
+bact_grad_deg <- sapply(bact_grad, degree)
+cross_grad_deg <- sapply(cross_grad, degree)
+
+make_grad_table <- function(data_list, kingdom, igraph_list) {
+  df = data.frame(OTU = names(unlist(data_list)),
+                           degree = unlist(data_list),
+                           site = c(rep("Beach", gorder(igraph_list[[1]])),
+                                     rep("Estuary", gorder(igraph_list[[2]])),
+                                     rep("Entrance", gorder(igraph_list[[3]])),
+                                     rep("Confluence", gorder(igraph_list[[4]])),
+                                     rep("Waterfall", gorder(igraph_list[[5]])),
+                                     rep("DrumRoad", gorder(igraph_list[[6]])),
+                                     rep("Ridge", gorder(igraph_list[[7]]))
+                                    
+                                    ),
+                           type = kingdom
+                           )
+  return(df)
+}
+
+fung_grad_deg <- make_grad_table(data_list = fung_grad_deg, 
+                               kingdom = "Fungi",
+                               igraph_list = fung_grad)
+
+bact_grad_deg <- make_grad_table(data_list = bact_grad_deg, 
+                               kingdom = "Bacteria",
+                               igraph_list = bact_grad)
+
+cross_grad_deg <- make_grad_table(data_list = cross_grad_deg, 
+                               kingdom = "Interkingdom",
+                               igraph_list = cross_grad)
+
+run_deg_stats_v3 <- function(df) {
+  my_lm <- lm(degree ~ site, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$site)
+  
+  return(my_tuk)
+}
+
+
+kingdom_grad_tuk <- lapply(list(fung_grad_deg, bact_grad_deg, cross_grad_deg),
+                          run_deg_stats_v3)
+
+names(kingdom_grad_tuk) <- kingdoms
+
+
+
+# then make tables by graditat
+all_grad_dat <- rbind(fung_grad_deg, bact_grad_deg, cross_grad_deg)
+
+site_deg_dat <- list()
+for (i in 1:length(gradient_sites)) {
+  new_df <- all_grad_dat[all_grad_dat$site==gradient_sites[i],]
+  
+  site_deg_dat[[i]] <- new_df
+}
+
+
+
+grad_grad_tuk <- lapply(site_deg_dat,
+                          run_deg_stats_v2)
+
+names(grad_grad_tuk) <- gradient_sites
+
+
+
+saveRDS(list(ws_tuk, kingdom_hab_tuk, hab_hab_tuk, kingdom_grad_tuk, grad_grad_tuk),
+        "../intermediates/new_knockouts/degree_tukey_results.rds")
+```
+
+
+Make sure to save out earlier RDS before running this one, names are overwritten
+# Betweenness centrality
+
+```{r}
+# watershed
+watershed_bc <- sapply(list(fung_ws, bact_ws, cross_ws), betweenness)
+
+watershed_df <- data.frame(OTU = names(unlist(watershed_bc)),
+                           bc = unlist(watershed_bc),
+                           kingdom = c(rep("Fungi", gorder(fung_ws)),
+                                       rep("Bacteria", gorder(bact_ws)),
+                                       rep("Interkingdom", gorder(cross_ws)))
+                           )
+
+ws_lm <- lm(bc ~ kingdom, data = watershed_df)
+ws_anova <- aov(ws_lm)
+ws_tuk <- as.data.frame(TukeyHSD(ws_anova)$kingdom)
+
+
+# habitat
+fung_hab_deg <- sapply(fung_hab, betweenness)
+bact_hab_deg <- sapply(bact_hab, betweenness)
+cross_hab_deg <- sapply(cross_hab, betweenness)
+
+make_hab_table <- function(data_list, kingdom, igraph_list) {
+  df = data.frame(OTU = names(unlist(data_list)),
+                           bc = unlist(data_list),
+                           habitat = c(rep("Stream", gorder(igraph_list[[1]])),
+                                       rep("Terrestrial", gorder(igraph_list[[2]])),
+                                       rep("Marine", gorder(igraph_list[[3]]))),
+                           type = kingdom
+                           )
+  return(df)
+}
+
+fung_hab_deg <- make_hab_table(data_list = fung_hab_deg, 
+                               kingdom = "Fungi",
+                               igraph_list = fung_hab)
+
+bact_hab_deg <- make_hab_table(data_list = bact_hab_deg, 
+                               kingdom = "Bacteria",
+                               igraph_list = bact_hab)
+
+cross_hab_deg <- make_hab_table(data_list = cross_hab_deg, 
+                               kingdom = "Interkingdom",
+                               igraph_list = cross_hab)
+
+
+run_deg_stats <- function(df) {
+  my_lm <- lm(bc ~ habitat, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$habitat)
+  
+  return(my_tuk)
+}
+
+kingdom_hab_tuk <- lapply(list(fung_hab_deg, bact_hab_deg, cross_hab_deg),
+                          run_deg_stats)
+
+names(kingdom_hab_tuk) <- kingdoms
+
+
+# then make tables by habitat
+all_hab_dat <- rbind(fung_hab_deg, bact_hab_deg, cross_hab_deg)
+
+stream_dat <- all_hab_dat[all_hab_dat$habitat=="Stream",]
+terr_dat <- all_hab_dat[all_hab_dat$habitat=="Terrestrial",]
+marine_dat <- all_hab_dat[all_hab_dat$habitat=="Marine",]
+
+run_deg_stats_v2 <- function(df) {
+  my_lm <- lm(bc ~ type, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$type)
+  
+  return(my_tuk)
+}
+
+hab_hab_tuk <- lapply(list(stream_dat, terr_dat, marine_dat),
+                          run_deg_stats_v2)
+
+names(hab_hab_tuk) <- habitats
+
+# gradient
+fung_grad_deg <- sapply(fung_grad, betweenness)
+bact_grad_deg <- sapply(bact_grad, betweenness)
+cross_grad_deg <- sapply(cross_grad, betweenness)
+
+make_grad_table <- function(data_list, kingdom, igraph_list) {
+  df = data.frame(OTU = names(unlist(data_list)),
+                           bc = unlist(data_list),
+                           site = c(rep("Beach", gorder(igraph_list[[1]])),
+                                     rep("Estuary", gorder(igraph_list[[2]])),
+                                     rep("Entrance", gorder(igraph_list[[3]])),
+                                     rep("Confluence", gorder(igraph_list[[4]])),
+                                     rep("Waterfall", gorder(igraph_list[[5]])),
+                                     rep("DrumRoad", gorder(igraph_list[[6]])),
+                                     rep("Ridge", gorder(igraph_list[[7]]))
+                                    
+                                    ),
+                           type = kingdom
+                           )
+  return(df)
+}
+
+fung_grad_deg <- make_grad_table(data_list = fung_grad_deg, 
+                               kingdom = "Fungi",
+                               igraph_list = fung_grad)
+
+bact_grad_deg <- make_grad_table(data_list = bact_grad_deg, 
+                               kingdom = "Bacteria",
+                               igraph_list = bact_grad)
+
+cross_grad_deg <- make_grad_table(data_list = cross_grad_deg, 
+                               kingdom = "Interkingdom",
+                               igraph_list = cross_grad)
+
+run_deg_stats_v3 <- function(df) {
+  my_lm <- lm(bc ~ site, data = df)
+  my_anova <- aov(my_lm)
+  my_tuk <- as.data.frame(TukeyHSD(my_anova)$site)
+  
+  return(my_tuk)
+}
+
+
+kingdom_grad_tuk <- lapply(list(fung_grad_deg, bact_grad_deg, cross_grad_deg),
+                          run_deg_stats_v3)
+
+names(kingdom_grad_tuk) <- kingdoms
+
+
+
+# then make tables by graditat
+all_grad_dat <- rbind(fung_grad_deg, bact_grad_deg, cross_grad_deg)
+
+site_deg_dat <- list()
+for (i in 1:length(gradient_sites)) {
+  new_df <- all_grad_dat[all_grad_dat$site==gradient_sites[i],]
+  
+  site_deg_dat[[i]] <- new_df
+}
+
+
+
+grad_grad_tuk <- lapply(site_deg_dat,
+                          run_deg_stats_v2)
+
+names(grad_grad_tuk) <- gradient_sites
+
+
+
+saveRDS(list(ws_tuk, kingdom_hab_tuk, hab_hab_tuk, kingdom_grad_tuk, grad_grad_tuk),
+        "../intermediates/new_knockouts/bc_tukey_results.rds")
+```
+
+
+
+
+
+

@@ -1,0 +1,81 @@
+---
+title: "distributions_test"
+output: html_document
+date: "2024-09-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=F}
+cross_stream <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/habitat/cross_habitat_igraphs.rds")[[1]]
+bact_terr <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/habitat/bact_habitat_igraphs.rds")[[2]]
+cross_terr <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/habitat/cross_habitat_igraphs.rds")[[2]]
+```
+
+```{r, messsage =F, warning = F, error = F, echo =F, include = F}
+library(fitdistrplus)
+library(actuar)
+library(igraph)
+```
+
+## Histograms
+
+I am using the degree instead of degree distribution as the latter are proportions and not counts
+```{r}
+
+hist(degree(cross_stream)) # interkingdom stream
+
+
+hist(degree(bact_terr)) # bacteria terrestrial
+
+
+hist(degree(cross_terr)) # interkingdom terrestrial
+```
+
+
+## Fitting 
+A lot of warnings about NaN. Not all are shown, but every fitdist() call produces a NaN warning
+```{r}
+
+#interkingdom stream
+cs_lognorm <- fitdist(degree(cross_stream), "lnorm")
+cs_pois <- fitdist(degree(cross_stream), "pois")
+cs_pareto <- fitdist(degree(cross_stream), "pareto")
+
+```
+
+```{r}
+# bacteria terrestrial
+bt_lognorm <- fitdist(degree(bact_terr), "lnorm")
+bt_pois <- fitdist(degree(bact_terr), "pois")
+bt_pareto <- fitdist(degree(bact_terr), "pareto")
+
+
+```
+
+```{r}
+# interkingdom terrestrial
+ct_lognorm <- fitdist(degree(cross_terr), "lnorm")
+ct_pois <- fitdist(degree(cross_terr), "pois")
+ct_pareto <- fitdist(degree(cross_terr), "pareto")
+```
+
+
+## Goodness of fit
+```{r}
+# interkingdom stream
+gofstat(list(cs_lognorm, cs_pois, cs_pareto), 
+        fitnames = c("lnorm", "poisson", "pareto"))
+
+# bacteria terrestrial
+gofstat(list(bt_lognorm, bt_pois, bt_pareto), 
+        fitnames = c("lnorm", "poisson", "pareto"))
+
+# interkingdom terrestrial
+gofstat(list(ct_lognorm, ct_pois, ct_pareto), 
+        fitnames = c("lnorm", "poisson", "pareto"))
+```
+
+

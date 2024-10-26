@@ -69,6 +69,8 @@ all_fung <- ggarrange(plotlist = fung_net_plots,
 
 ggsave("../figures/finals/hostnon/downsamp_fung_hostnon_network_plots.png", all_fung, width=12.5, height=6)
 
+ggsave("../figures/finals/hostnon/downsamp_fung_hostnon_network_plots.pdf", all_fung, width=12.5, height=6)
+
 ```
 
 # 16S
@@ -101,6 +103,8 @@ all_bact <- ggarrange(plotlist = bact_net_plots,
                       nrow = 1) + bgcolor("white")
 
 ggsave("../figures/finals/hostnon/downsamp_bact_hostnon_network_plots.png", all_bact, width=12.5, height=6)
+
+ggsave("../figures/finals/hostnon/downsamp_bact_hostnon_network_plots.pdf", all_bact, width=12.5, height=6)
 
 ```
 
@@ -139,7 +143,24 @@ all_cross <- ggarrange(plotlist = cross_net_plots,
 
 ggsave("../figures/finals/hostnon/dowmsamp_cross_hostnon_network_plots.png",all_cross, width=13, height=6.5)
 
+ggsave("../figures/finals/hostnon/dowmsamp_cross_hostnon_network_plots.pdf",all_cross, width=13, height=6.5)
+
 ```
+
+```{r}
+library(patchwork)
+
+pls <- fung_net_plots[[1]] + fung_net_plots[[2]] +
+  bact_net_plots[[1]] + bact_net_plots[[2]] +
+  cross_net_plots[[1]] + cross_net_plots[[2]] & theme(legend.position = "bottom")
+
+pls <- pls + plot_layout(guides="collect", nrow = 3)
+
+ggsave("../figures/finals/hostnon/all_empo1_downsamp_netviz.pdf", pls, width = 13, height = 18)
+ggsave("../figures/finals/hostnon/all_empo1_downsamp_netviz.png", pls,  width = 13, height = 18)
+
+```
+
 
 
 

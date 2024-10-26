@@ -1,0 +1,180 @@
+---
+title: "06_which_nodes_knocked_out"
+output: html_document
+date: "2024-10-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(eulerr)
+library(ggpubr)
+
+multi_merge_matrix <- function(matrix_list) {
+
+r <- merge(matrix_list[[1]], matrix_list[[2]], by="row.names", all=TRUE)
+# ASVs become a row, change back to rownames
+rownames(r) <- r[,1]
+# remove the column where the ASVs just were so the next merge works
+r[,1] <- NULL
+
+  for (i in 3:length(matrix_list)) {
+  r <- merge(r, matrix_list[[i]], by="row.names", all=T)
+  rownames(r) <- r[,1]
+  r[,1] <- NULL
+  }
+
+r <- as(r, "matrix")
+
+r[is.na(r)] <- 0
+
+return(r)
+
+}
+```
+
+Goal: assess whether nodes removed first in high to low bc knockouts are the same across habitats and gradient sites
+
+Habitat
+
+```{r}
+# stream, terrestrial, marine
+# inputs are lists of lists of 3 dfs
+fung_hab_robust <- readRDS("../intermediates/new_knockouts/fung_habitat_knockouts.rds")[[1]]
+bact_hab_robust <- readRDS("../intermediates/new_knockouts/bact_habitat_knockouts.rds")[[1]]
+cross_hab_robust <- readRDS("../intermediates/new_knockouts/cross_habitat_knockouts.rds")[[1]]
+
+
+fung_test <- lapply(fung_hab_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+fung_test <- lapply(fung_test, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+fung_overlap <- as.data.frame(multi_merge_matrix(fung_test))
+
+fung_bool <- apply(fung_overlap, 2, function(x) ifelse(x!=0, T, F))
+fung_bool <- as.data.frame(fung_bool)
+names(fung_bool) = c("Stream", "Terrestrial", "Marine")
+
+fung_euler <- euler(fung_bool)
+fung_eul_plot <-  plot(fung_euler, quantities=TRUE, edges = T)
+
+
+
+bact_half <- lapply(bact_hab_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+bact_half <- lapply(bact_half, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+bact_overlap <- as.data.frame(multi_merge_matrix(bact_half))
+
+bact_bool <- apply(bact_overlap, 2, function(x) ifelse(x!=0, T, F))
+bact_bool <- as.data.frame(bact_bool)
+names(bact_bool) = c("Stream", "Terrestrial", "Marine")
+
+bact_euler <- euler(bact_bool)
+bact_eul_plot <-  plot(bact_euler, quantities=TRUE, edges = T)
+
+
+
+cross_half <- lapply(cross_hab_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+cross_half <- lapply(cross_half, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+cross_overlap <- as.data.frame(multi_merge_matrix(cross_half))
+
+cross_bool <- apply(cross_overlap, 2, function(x) ifelse(x!=0, T, F))
+cross_bool <- as.data.frame(cross_bool)
+names(cross_bool) = c("Stream", "Terrestrial", "Marine")
+
+cross_euler <- euler(cross_bool)
+cross_eul_plot <-  plot(cross_euler, quantities=TRUE, edges = T)
+
+hab_euls <- ggarrange(fung_eul_plot, bact_eul_plot, cross_eul_plot, nrow = 1)
+```
+
+Gradient
+
+```{r}
+# robustness results from slurm
+fung_grad_robust <- readRDS("../intermediates/new_knockouts/fung_gradient_knockouts.rds")[[1]]
+bact_grad_robust <- readRDS("../intermediates/new_knockouts/bact_gradient_knockouts.rds")[[1]]
+cross_grad_robust <- readRDS("../intermediates/new_knockouts/cross_gradient_knockouts.rds")[[1]]
+
+# reorder from bottom to top of watershed
+fung_grad_robust <- fung_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_robust <- bact_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_robust <- cross_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+
+gradient_sites <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+
+
+fung_half <- lapply(fung_grad_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+fung_half <- lapply(fung_half, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+fung_overlap <- as.data.frame(multi_merge_matrix(fung_half))
+
+fung_bool <- apply(fung_overlap, 2, function(x) ifelse(x!=0, T, F))
+fung_bool <- as.data.frame(fung_bool)
+names(fung_bool) = gradient_sites
+
+fung_euler <- euler(fung_bool)
+fung_eul_plot <-  plot(fung_euler, quantities=TRUE, edges = F)
+
+
+
+bact_half <- lapply(bact_grad_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+bact_half <- lapply(bact_half, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+bact_overlap <- as.data.frame(multi_merge_matrix(bact_half))
+
+bact_bool <- apply(bact_overlap, 2, function(x) ifelse(x!=0, T, F))
+bact_bool <- as.data.frame(bact_bool)
+names(bact_bool) = gradient_sites
+
+bact_euler <- euler(bact_bool)
+bact_eul_plot <-  plot(bact_euler, quantities=TRUE, edges = F)
+
+
+
+cross_half <- lapply(cross_grad_robust, 
+                    function(x) x$node.removed[2:round(nrow(x)/2)]) 
+
+cross_half <- lapply(cross_half, function(x)
+                    as.data.frame(x, row.names= x))
+
+
+cross_overlap <- as.data.frame(multi_merge_matrix(cross_half))
+
+cross_bool <- apply(cross_overlap, 2, function(x) ifelse(x!=0, T, F))
+cross_bool <- as.data.frame(cross_bool)
+names(cross_bool) = gradient_sites
+
+cross_euler <- euler(cross_bool)
+cross_eul_plot <-  plot(cross_euler, quantities=TRUE, edges = F)
+
+grad_euls <- ggarrange(fung_eul_plot, bact_eul_plot, cross_eul_plot, nrow = 1)
+
+
+pp <- hab_euls + grad_euls + plot_layout(ncol = 1)
+
+ggsave("../figures/aug2024_revisions/knockout_50pct_venns.pdf", pp, width = 12, height = 12)
+```
+

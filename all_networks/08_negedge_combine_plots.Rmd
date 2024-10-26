@@ -1,0 +1,174 @@
+---
+title: "08_negedge_combine_plots"
+output: html_document
+date: "2024-10-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Full networks
+
+```{r}
+ws <- readRDS("../intermediates/richtest_downsamp/fullwatershednets_neg_edge_pcts.rds")
+
+hab <- readRDS("../intermediates/habitat/hab_neg_pct.rds")
+
+grad <- readRDS("../intermediates/gradient/terrestrial/neg_edges_gradient.rds")
+all_grad <- do.call("rbind", grad)
+
+
+nn <- c("negative", "positive", "type", "total", "neg_pct", "pos_pct", "kingdom")
+
+names(hab) = nn
+names(all_grad) = nn
+
+
+my_colors <- wes_palette("GrandBudapest2")[2:4]
+
+  ws_pl <- ggplot(ws, aes(x = domain, y = neg_pct, fill = domain)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = my_colors) +
+    theme_classic() +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black",margin=margin(5,0,0,0))) +
+    theme(axis.text.x=element_text(colour="black",size=10)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(legend.position = "none") +
+    labs( x = "Kingdom", y = "Proportion of Negative Edges") +
+    scale_y_continuous(breaks = seq(0, 0.3, 0.1), limits = c(c(0, 0.3)))
+
+  hab_pl <- ggplot(hab, aes(x = type, y = neg_pct, fill = kingdom)) +
+    geom_bar(stat="identity", position="dodge") +
+    scale_fill_manual(values = my_colors) +
+    theme_classic() +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black",margin=margin(5,0,0,0))) +
+    theme(axis.text.x=element_text(colour="black",size=10)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    labs(fill = "Kingdom", x = "Habitat", y = "Proportion of Negative Edges") +
+    scale_y_continuous(breaks = seq(0, 0.35, 0.05), limits = c(c(0, 0.35)))
+  
+
+kingdoms <- c("Fungi", "Bacteria", "Interkingdom")
+grad_plots <- list()
+
+for (i in 1:3) {
+  dat <- all_grad[all_grad$kingdom==kingdoms[i],]
+  dat$type <- factor(dat$type, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = type, y = neg_pct)) +
+    geom_bar(stat="identity", fill=my_colors[i]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black", margin=margin(5,0,0,0))) +
+    scale_y_continuous(breaks = seq(0, 0.4, 0.1), limits = c(c(0, 0.4))) +
+    labs(y = "Proportion of Negative Edges", title = kingdoms[i], x = "Site")
+  
+  grad_plots[[i]] <- pl
+}
+
+
+library(patchwork)
+
+library(cowplot)
+my_legend <- get_legend(hab_pl)
+library(ggpubr)
+pp <- as_ggplot(my_legend)
+
+
+hab_pl_nolegend <- hab_pl + theme(legend.position = "none")
+
+
+all_full_net <- ws_pl + hab_pl_nolegend + pp + grad_plots[[1]] + grad_plots[[2]] + grad_plots[[3]] +
+  plot_layout(ncol = 3)
+
+ggsave("../figures/aug2024_revisions/metrics_bars/fullnet_negedges.pdf", all_full_net, width = 15, height = 8.5)
+```
+
+# Downsampled!
+
+Note that things are being written over
+
+```{r}
+rm(list=ls())
+
+ws <- readRDS("../intermediates/richtest_downsamp/watershed721_neg_edge_pcts.rds")
+
+hab <- readRDS("../intermediates/habitat/hab_downsamp721_neg_pct.rds")
+
+grad <- readRDS("../intermediates/gradient/grad_downsamp721_neg_pct.rds")
+
+
+my_colors <- paletteer_d("vapoRwave::floralShoppe")[2:4]
+
+  ws_pl <- ggplot(ws, aes(x = domain, y = neg_pct, fill = domain)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = my_colors) +
+    theme_classic() +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black",margin=margin(5,0,0,0))) +
+    theme(axis.text.x=element_text(colour="black",size=10)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(legend.position = "none") +
+    labs( x = "Kingdom", y = "Proportion of Negative Edges") +
+    scale_y_continuous(breaks = seq(0, 0.3, 0.1), limits = c(c(0, 0.3)))
+
+  hab_pl <- ggplot(hab, aes(x = habitat, y = neg_pct, fill = domain)) +
+    geom_bar(stat="identity", position="dodge") +
+    scale_fill_manual(values = my_colors) +
+    theme_classic() +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black",margin=margin(5,0,0,0))) +
+    theme(axis.text.x=element_text(colour="black",size=10)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    labs(fill = "Kingdom", x = "Habitat", y = "Proportion of Negative Edges") +
+    scale_y_continuous(breaks = seq(0, 0.35, 0.05), limits = c(c(0, 0.35)))
+  
+
+kingdoms <- c("Fungi", "Bacteria", "Interkingdom")
+grad_plots <- list()
+
+for (i in 1:3) {
+  dat <- grad[grad$domain==kingdoms[i],]
+  dat$plot <- factor(dat$plot, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  
+  pl <- ggplot(dat, aes(x = plot, y = neg_pct)) +
+    geom_bar(stat="identity", fill=my_colors[i]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_text(colour="black", margin=margin(0,5,0,0))) +
+    theme(axis.title.x=element_text(colour="black", margin=margin(5,0,0,0))) +
+    scale_y_continuous(breaks = seq(0, 0.4, 0.1), limits = c(c(0, 0.4))) +
+    labs(y = "Proportion of Negative Edges", title = kingdoms[i], x = "Site")
+  
+  grad_plots[[i]] <- pl
+}
+
+
+library(patchwork)
+
+library(cowplot)
+my_legend <- get_legend(hab_pl)
+library(ggpubr)
+pp <- as_ggplot(my_legend)
+
+
+hab_pl_nolegend <- hab_pl + theme(legend.position = "none")
+
+
+all_downsamp_net <- ws_pl + hab_pl_nolegend + pp + grad_plots[[1]] + grad_plots[[2]] + grad_plots[[3]] +
+  plot_layout(ncol = 3)
+
+ggsave("../figures/aug2024_revisions/metrics_bars/downsamp_negedges.pdf", all_downsamp_net, width = 15, height = 8.5)
+```

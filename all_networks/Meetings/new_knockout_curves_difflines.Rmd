@@ -1,0 +1,49 @@
+---
+title: "new_knockout_curves - different lines"
+output: html_document
+date: "2024-09-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Watershed
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/watershed_robust_by_kingdom.png")
+```
+
+## Habitat
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/habitat_robust_by_habitat.png")
+```
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/habitat_robust_by_kingdom.png")
+```
+
+## Gradient
+
+Do we want these plotted differently? Particularly the second set
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/gradient_robust_by_gradient.png")
+```
+<br> 
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/gradient_robust_by_kingdom.png")
+```
+
+
+## Host-Nonhost
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/hostnon_robust_by_hostnon.png")
+```
+
+```{r, echo=F}
+knitr::include_graphics("../../figures/aug2024_revisions/hostnon_robust_by_kingdom.png")
+```

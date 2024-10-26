@@ -18,7 +18,6 @@ library(dplyr)
 library(tibble)
 library(pbmcapply)
 library(reshape2)
-library(reshape2)
 library(wesanderson)
 library(scales)
 ```
@@ -41,23 +40,11 @@ habs <- unique(fung_meta$habitat)
 ```
 
 ### Metrics to Calculate
-For nodes: betweenness, degree, and complexity.
-For networks: modularity, transitivity, diameter.
-
 
 ## ITS
 
 ```{r}
 fung_nets <- fung_igraphs
-
-lapply(fung_nets, length)
-
-# subset to only connected nodes (only affects fungi)
-#fung_nets <- lapply(fung_nets, function(x) subgraph(x, igraph::degree(x)>0))
-
-## EDGE NUMBER
-fung_edge_num <- sapply(fung_nets, ecount)
-
 
 
 ## BETWEENNESS CENTRALITY
@@ -66,32 +53,33 @@ fung_bc <- sapply(fung_nets, betweenness)
 ## DEGREE
 fung_deg <- sapply(fung_nets, degree)
 
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
 
 
-## COMPLEXITY
-fung_cmp <- sapply(fung_nets, graph.density)
+fung_conn <- sapply(fung_nets, connectance)
 
-## DIAMETER
-fung_diam <- sapply(fung_nets, diameter)
+
+## EDGE TO NODE RATIO
+fung_num_nodes <- sapply(fung_nets, gorder)
+fung_num_edges <- sapply(fung_nets, gsize)
+
+fung_eton_ratio <- fung_num_edges / fung_num_nodes
 
 ## MODULARITY
-#fung_mod <- sapply(fung_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
-
 fung_netcarto <- readRDS("../intermediates/habitat/fung_habitat_netcarto_results.rds")
 
 fung_new_mod <- sapply(fung_netcarto, function(x) x[[2]])
 
-## CLUSTERING COEFFICIENT
-fung_cc <- sapply(fung_nets, transitivity)
 
 
-
-metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
 
 fung_metrics <- data.frame(modularity <- fung_new_mod,
-                           diameter <- fung_diam,
-                           transitivity <- fung_cc,
-                           complexity <- fung_cmp
+                           connectance <- fung_conn,
+                           eton_ratio <- fung_eton_ratio
                            )
 names(fung_metrics) <- metrics
 fung_metrics$habitat <- habs
@@ -108,7 +96,7 @@ for (i in 1:length(metrics)) {
   #dat$habitat <- factor(dat$habitat, levels=c("Riverine", "Terrestrial", "Marine"))
   
   pl <- ggplot(dat, aes(x = habitat, y = value)) +
-    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[1]) +
+    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[2]) +
     theme_classic() +
     theme(axis.text.x=element_text(colour="black",size=9)) +
     theme(text=element_text(colour="black",size=12)) +
@@ -155,8 +143,8 @@ library(wesanderson)
 wes_palette("GrandBudapest2")
 
 fung_deg_boxplot <- ggplot(fung_deg_all, aes(x=habitat, y=log_val)) +
-    geom_jitter(color=wes_palette("GrandBudapest2")[1], size=0.4, alpha=0.4) +
-    geom_boxplot(fill = wes_palette("GrandBudapest2")[1]) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.4, alpha=0.4) +
+    geom_boxplot(fill = wes_palette("GrandBudapest2")[2]) +
     theme_classic() +
     theme(axis.text.x=element_text(colour="black",size=9)) +
     theme(text=element_text(colour="black",size=12)) +
@@ -226,15 +214,6 @@ all_fung <- ggarrange(fung_deg_boxplot,
 ```{r}
 bact_nets <- bact_igraphs
 
-lapply(bact_nets, length)
-
-# subset to only connected nodes (only affects fungi)
-#bact_nets <- lapply(bact_nets, function(x) subgraph(x, igraph::degree(x)>0))
-
-## EDGE NUMBER
-bact_edge_num <- sapply(bact_nets, ecount)
-
-
 
 ## BETWEENNESS CENTRALITY
 bact_bc <- sapply(bact_nets, betweenness)
@@ -242,30 +221,33 @@ bact_bc <- sapply(bact_nets, betweenness)
 ## DEGREE
 bact_deg <- sapply(bact_nets, degree)
 
-## COMPLEXITY
-bact_cmp <- sapply(bact_nets, graph.density)
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
 
-## DIAMETER
-bact_diam <- sapply(bact_nets, diameter)
+
+bact_conn <- sapply(bact_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+bact_num_nodes <- sapply(bact_nets, gorder)
+bact_num_edges <- sapply(bact_nets, gsize)
+
+bact_eton_ratio <- bact_num_edges / bact_num_nodes
 
 ## MODULARITY
-#bact_mod <- sapply(bact_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
-
 bact_netcarto <- readRDS("../intermediates/habitat/bact_habitat_netcarto_results.rds")
 
 bact_new_mod <- sapply(bact_netcarto, function(x) x[[2]])
 
-## CLUSTERING COEFFICIENT
-bact_cc <- sapply(bact_nets, transitivity)
 
 
-
-metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
 
 bact_metrics <- data.frame(modularity <- bact_new_mod,
-                           diameter <- bact_diam,
-                           transitivity <- bact_cc,
-                           complexity <- bact_cmp
+                           connectance <- bact_conn,
+                           eton_ratio <- bact_eton_ratio
                            )
 names(bact_metrics) <- metrics
 bact_metrics$habitat <- habs
@@ -275,36 +257,18 @@ names(bact_mt_long) <- c("habitat", "metric", "value")
 bact_mt_long$type <- "Bacteria"
 
 
-unadjusted_bact_metric_plots <- list()
-
-for (i in 1:length(metrics)) {
-  dat <- bact_mt_long[bact_mt_long$metric==metrics[i],]
-  
-  pl <- ggplot(dat, aes(x = habitat, y = value)) +
-    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[2]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    labs(x = "Site", y = "Value", title = paste("16S,", metrics[i]))
-  
-  unadjusted_bact_metric_plots[[i]] <- pl
-}
-
-
 ## node metric boxplots
 bact_deg_dat <- list()
 for (i in 1:3) {
   df <- data.frame(habitat = rep(habs[[i]], length(bact_deg[[i]])),
                    metric = rep("degree", length(bact_deg[[i]])),
                    value = bact_deg[[i]])
+  
   bact_deg_dat[[i]] <- df
 }
 
 bact_deg_all <- do.call("rbind", bact_deg_dat)
-bact_deg_all$log_val <- log(bact_deg_all$value)
+bact_deg_all$log_val <- log(bact_deg_all$value + 1)
 bact_deg_all$type <- "Bacteria"
 
 
@@ -313,94 +277,21 @@ for (i in 1:3) {
   df <- data.frame(habitat = rep(habs[[i]], length(bact_bc[[i]])),
                    metric = rep("betweenness", length(bact_bc[[i]])),
                    value = bact_bc[[i]])
+
   bact_bc_dat[[i]] <- df
 }
 
 bact_bc_all <- do.call("rbind", bact_bc_dat)
-bact_bc_all$log_val <- log(bact_deg_all$value + 1)
+bact_bc_all$log_val <- log(bact_bc_all$value + 1)
 bact_bc_all$type <- "Bacteria"
 
-
-bact_deg_boxplot <- ggplot(bact_deg_all, aes(x=habitat, y=log_val)) +
-    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.4, alpha=0.4) +
-    geom_boxplot(fill = wes_palette("GrandBudapest2")[2]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    scale_y_continuous(breaks = seq(0, 6, 2),limits = c(c(0, 6))) +
-    labs(title = "16S, Degree, log-transformed")
-
-
-bact_bc_boxplot <- ggplot(bact_bc_all, aes(x=habitat, y=log_val)) +
-    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.4, alpha=0.4) +
-    geom_boxplot(fill = wes_palette("GrandBudapest2")[2]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    scale_y_continuous(breaks = seq(0, 6, 2),limits = c(c(0, 6))) +
-    labs(title = "16S, Betweenness Centrality, log-transformed")
-
-
-
-
-bact_metric_plots <- unadjusted_bact_metric_plots
-
-
-# modularity
-bact_metric_plots[[1]] <- bact_metric_plots[[1]] +
-                          scale_y_continuous(breaks = seq(0, 0.6, 0.2),
-                                             limits = c(c(0, 0.6)))
-
-# diameter
-bact_metric_plots[[2]] <- unadjusted_bact_metric_plots[[2]] +
-                          scale_y_continuous(breaks = seq(0, 14, 2),
-                                             limits = c(c(0, 14)))
-
-
-# transitivity
-bact_metric_plots[[3]] <- bact_metric_plots[[3]] +
-                          scale_y_continuous(breaks = seq(0, 0.18, 0.03),
-                                             limits = c(c(0, 0.18)))
-
-# complexity
-bact_metric_plots[[4]] <- unadjusted_bact_metric_plots[[4]] +
-                          scale_y_continuous(breaks = seq(0, 0.006, 0.002),
-                                             limits = c(c(0, 0.006)))
-
-
-
-all_bact <- ggarrange(bact_deg_boxplot,
-                      bact_bc_boxplot,
-                      bact_metric_plots[[1]],
-                      bact_metric_plots[[2]],
-                      bact_metric_plots[[3]],
-                      bact_metric_plots[[4]],
-                      ncol = 3,
-                      nrow = 2) + bgcolor("white")
-
-#ggsave("../figures/habitat/bact_metric_plots.jpg", width=19, height=9.5)
-
 ```
+
 
 ## Cross
 
 ```{r}
 cross_nets <- cross_igraphs
-
-lapply(cross_nets, length)
-
-# subset to only connected nodes (only affects fungi)
-#cross_nets <- lapply(cross_nets, function(x) subgraph(x, igraph::degree(x)>0))
-
-## EDGE NUMBER
-cross_edge_num <- sapply(cross_nets, ecount)
-
 
 
 ## BETWEENNESS CENTRALITY
@@ -409,56 +300,40 @@ cross_bc <- sapply(cross_nets, betweenness)
 ## DEGREE
 cross_deg <- sapply(cross_nets, degree)
 
-## COMPLEXITY
-cross_cmp <- sapply(cross_nets, graph.density)
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
 
-## DIAMETER
-cross_diam <- sapply(cross_nets, diameter)
+
+cross_conn <- sapply(cross_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+cross_num_nodes <- sapply(cross_nets, gorder)
+cross_num_edges <- sapply(cross_nets, gsize)
+
+cross_eton_ratio <- cross_num_edges / cross_num_nodes
 
 ## MODULARITY
-#cross_mod <- sapply(cross_nets, function(x) modularity(x, membership(cluster_walktrap(x))))
-
 cross_netcarto <- readRDS("../intermediates/habitat/cross_habitat_netcarto_results.rds")
 
 cross_new_mod <- sapply(cross_netcarto, function(x) x[[2]])
 
-## CLUSTERING COEFFICIENT
-cross_cc <- sapply(cross_nets, transitivity)
 
 
-
-metrics <- c("Modularity", "Diameter", "Transitivity", "Complexity")
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
 
 cross_metrics <- data.frame(modularity <- cross_new_mod,
-                           diameter <- cross_diam,
-                           transitivity <- cross_cc,
-                           complexity <- cross_cmp
+                           connectance <- cross_conn,
+                           eton_ratio <- cross_eton_ratio
                            )
 names(cross_metrics) <- metrics
 cross_metrics$habitat <- habs
 
 cross_mt_long <- melt(cross_metrics, id.vars = "habitat", variable.name = "category", value.name = "value")
 names(cross_mt_long) <- c("habitat", "metric", "value")
-cross_mt_long$type <- "Cross"
-
-
-unadjusted_cross_metric_plots <- list()
-
-for (i in 1:length(metrics)) {
-  dat <- cross_mt_long[cross_mt_long$metric==metrics[i],]
-  
-  pl <- ggplot(dat, aes(x = habitat, y = value)) +
-    geom_bar(stat="identity", fill=wes_palette("GrandBudapest2")[3]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    labs(title = paste("Cross,", metrics[i]))
-  
-  unadjusted_cross_metric_plots[[i]] <- pl
-}
+cross_mt_long$type <- "Interkingdom"
 
 
 ## node metric boxplots
@@ -467,90 +342,27 @@ for (i in 1:3) {
   df <- data.frame(habitat = rep(habs[[i]], length(cross_deg[[i]])),
                    metric = rep("degree", length(cross_deg[[i]])),
                    value = cross_deg[[i]])
+  
   cross_deg_dat[[i]] <- df
 }
 
 cross_deg_all <- do.call("rbind", cross_deg_dat)
-cross_deg_all$log_val <- log(cross_deg_all$value)
-cross_deg_all$type <- "Cross"
+cross_deg_all$log_val <- log(cross_deg_all$value + 1)
+cross_deg_all$type <- "Interkingdom"
+
 
 cross_bc_dat <- list()
 for (i in 1:3) {
   df <- data.frame(habitat = rep(habs[[i]], length(cross_bc[[i]])),
                    metric = rep("betweenness", length(cross_bc[[i]])),
                    value = cross_bc[[i]])
+
   cross_bc_dat[[i]] <- df
 }
 
 cross_bc_all <- do.call("rbind", cross_bc_dat)
 cross_bc_all$log_val <- log(cross_bc_all$value + 1)
-cross_bc_all$type <- "Cross"
-
-
-cross_deg_boxplot <- ggplot(cross_deg_all, aes(x=habitat, y=log_val)) +
-    geom_jitter(color=wes_palette("GrandBudapest2")[3], size=0.4, alpha=0.4) +
-    geom_boxplot(fill = wes_palette("GrandBudapest2")[3]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    scale_y_continuous(breaks = seq(0, 6, 2), limits = c(c(0, 6))) +
-    labs(title = "Cross, Degree, log-transformed")
-
-
-cross_bc_boxplot <- ggplot(cross_bc_all, aes(x=habitat, y=log_val)) +
-    geom_jitter(color=wes_palette("GrandBudapest2")[3], size=0.4, alpha=0.4) +
-    geom_boxplot(fill = wes_palette("GrandBudapest2")[3]) +
-    theme_classic() +
-    theme(axis.text.x=element_text(colour="black",size=9)) +
-    theme(text=element_text(colour="black",size=12)) +
-    theme(axis.text.y=element_text(colour="black",size=9)) +
-    theme(axis.title.y=element_blank()) +
-    theme(axis.title.x=element_blank()) +
-    scale_y_continuous(breaks = seq(0, 14, 2), limits = c(c(0, 14))) +
-    labs(title = "Cross, Betweenness Centrality, log-transformed")
-
-
-
-
-cross_metric_plots <- unadjusted_cross_metric_plots
-
-
-# modularity
-cross_metric_plots[[1]] <- unadjusted_cross_metric_plots[[1]] +
-                          scale_y_continuous(breaks = seq(0, 0.6, 0.2),
-                                             limits = c(c(0, 0.6)))
-
-# diameter
-cross_metric_plots[[2]] <- unadjusted_cross_metric_plots[[2]] +
-                          scale_y_continuous(breaks = seq(0, 12, 3),
-                                             limits = c(c(0, 12)))
-
-
-# transitivity
-cross_metric_plots[[3]] <- unadjusted_cross_metric_plots[[3]] +
-                          scale_y_continuous(breaks = seq(0, 0.18, 0.03),
-                                             limits = c(c(0, 0.18)))
-
-# complexity
-cross_metric_plots[[4]] <- unadjusted_cross_metric_plots[[4]] +
-                          scale_y_continuous(breaks = seq(0, 0.0055, 0.0011),
-                                             limits = c(c(0, 0.0055)))
-
-
-
-all_cross <- ggarrange(cross_deg_boxplot,
-                      cross_bc_boxplot,
-                      cross_metric_plots[[1]],
-                      cross_metric_plots[[2]],
-                      cross_metric_plots[[3]],
-                      cross_metric_plots[[4]],
-                      ncol = 3,
-                      nrow = 2) + bgcolor("white")
-
-#ggsave("../figures/habitat/cross_metric_plots.jpg", width=19, height=9.5)
+cross_bc_all$type <- "Interkingdom"
 
 ```
 
@@ -561,11 +373,11 @@ all_cross <- ggarrange(cross_deg_boxplot,
 all_metric_data <- do.call("rbind", list(fung_mt_long, bact_mt_long, cross_mt_long))
 all_metric_data$value <- as.numeric(all_metric_data$value)
 
-all_metric_data$type <- factor(all_metric_data$type, levels = c("Fungi", "Bacteria", "Cross"))
+all_metric_data$type <- factor(all_metric_data$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
 
 
 # consistent guides
-g <- guides(fill = guide_legend(override.aes = list(fill = wes_palette("GrandBudapest2")[2:4],
+g <- guides(fill = guide_legend(override.aes = list(fill =  paletteer_d("vapoRwave::floralShoppe")[2:4],
                                                     color = "black")))
 
 unadjusted_full_metric_plots <- list()
@@ -575,7 +387,7 @@ for (i in 1:length(metrics)) {
   
   pl <- ggplot(dat, aes(x = habitat, y = value, fill = type)) +
     geom_bar(stat="identity", position="dodge", key_glyph = "rect") +
-    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
     theme_classic() +
     theme(axis.text.x=element_text(colour="black",size=9)) +
     theme(text=element_text(colour="black",size=12)) +
@@ -595,29 +407,22 @@ full_metric_plots[[1]] <- unadjusted_full_metric_plots[[1]] +
                           scale_y_continuous(breaks = seq(0, 0.7, 0.1),
                                              limits = c(c(0, 0.7)))
 
-# diameter
-full_metric_plots[[2]] <- unadjusted_full_metric_plots[[2]] +
-                          scale_y_continuous(breaks = seq(0, 30, 5),
-                                             limits = c(c(0, 30)))
 
-
-# transitivity
 full_metric_plots[[3]] <- unadjusted_full_metric_plots[[3]] +
-                          scale_y_continuous(breaks = seq(0, 0.6, 0.2),
-                                             limits = c(c(0, 0.6)))
+                          scale_y_continuous(breaks = seq(0, 25, 5),
+                                             limits = c(c(0, 25)))
 
-# complexity was ok
 
 
 ## degree boxplots
 all_deg_dat <- do.call("rbind", list(fung_deg_all, bact_deg_all, cross_deg_all))
-all_deg_dat$type <- factor(all_deg_dat$type, levels = c("Fungi", "Bacteria", "Cross"))
+all_deg_dat$type <- factor(all_deg_dat$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
 
 full_deg_boxplot <- ggplot(all_deg_dat, aes(x=habitat, y=log_val, fill=type)) +
     #geom_point(position = position_jitterdodge(dodge.width=0.7), alpha=0.3) +
     geom_boxplot(key_glyph = "rect") +
-    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
-    #scale_color_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    #scale_color_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
     theme_classic() +
     theme(axis.text.x=element_text(colour="black",size=9)) +
     theme(text=element_text(colour="black",size=12)) +
@@ -633,13 +438,13 @@ full_deg_boxplot <- ggplot(all_deg_dat, aes(x=habitat, y=log_val, fill=type)) +
 
 ## btwn cent boxplots
 all_bc_dat <- do.call("rbind", list(fung_bc_all, bact_bc_all, cross_bc_all))
-all_bc_dat$type <- factor(all_bc_dat$type, levels = c("Fungi", "Bacteria", "Cross"))
+all_bc_dat$type <- factor(all_bc_dat$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
 
 full_bc_boxplot <- ggplot(all_bc_dat, aes(x=habitat, y=log_val, fill=type)) +
     #geom_point(position = position_jitterdodge(dodge.width=0.7), alpha=0.3) +
     geom_boxplot(key_glyph = "rect") +
-    scale_fill_manual(values = wes_palette("GrandBudapest2")[2:4]) +
-    scale_color_manual(values = wes_palette("GrandBudapest2")[2:4]) +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    scale_color_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
     theme_classic() +
     theme(axis.text.x=element_text(colour="black",size=9)) +
     theme(text=element_text(colour="black",size=12)) +
@@ -656,15 +461,394 @@ full_bc_boxplot <- ggplot(all_bc_dat, aes(x=habitat, y=log_val, fill=type)) +
 
 library(patchwork)
 
-all_plots <- full_deg_boxplot + full_bc_boxplot + full_metric_plots[[1]] + full_metric_plots[[2]] + full_metric_plots[[3]] + full_metric_plots[[4]] 
+library(cowplot)
+my_legend <- get_legend(full_metric_plots[[1]])
+library(ggpubr)
+pp <- as_ggplot(my_legend)
 
-#plots <- plots & xlab(NULL) & ylab(NULL)
-all_plots <- all_plots + plot_layout(guides = "collect") & theme(legend.position = "bottom")
 
-ggsave("../figures/finals/habitat/habitat_metrics_collected.pdf", width=15, height=9)
+boot_the_legend <- function(ggplot) {
+  x = ggplot + theme(legend.position = "none")
+  return(x)
+}
+
+full_metric_plots <- lapply(full_metric_plots, boot_the_legend)
+
+conn_pl <- conn_pl + theme(legend.position = "none")
+
+all_plots <- full_deg_boxplot + full_bc_boxplot + pp + full_metric_plots[[1]] + full_metric_plots[[2]] + full_metric_plots[[3]] 
+
+ggsave("../figures/aug2024_revisions/metrics_bars/habitat_metrics_collected.pdf", width=15, height=9)
 ```
 
 
+
+# Downsampled
+
+```{r}
+# import igraph objects
+fung_igraphs <- readRDS("../intermediates/richtest_downsamp/fung_hab_downsamp721_igraphs.rds")
+bact_igraphs <- readRDS("../intermediates/richtest_downsamp/bact_hab_downsamp721_igraphs.rds")
+cross_igraphs <- readRDS("../intermediates/richtest_downsamp/cross_hab_downsamp721_igraphs.rds")
+
+habs = c("Stream", "Terrestrial", "Marine")
+```
+
+### Metrics to Calculate
+
+## ITS
+
+```{r}
+fung_nets <- fung_igraphs
+
+
+## BETWEENNESS CENTRALITY
+fung_bc <- lapply(fung_nets, betweenness)
+
+## DEGREE
+fung_deg <- lapply(fung_nets, degree)
+
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+fung_conn <- sapply(fung_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+fung_num_nodes <- sapply(fung_nets, gorder)
+fung_num_edges <- sapply(fung_nets, gsize)
+
+fung_eton_ratio <- fung_num_edges / fung_num_nodes
+
+## MODULARITY
+fung_netcarto <- readRDS("../intermediates/habitat/hab_downsamp721_netcarto.rds")[1:3]
+
+fung_new_mod <- sapply(fung_netcarto, function(x) x[[2]])
+
+
+
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
+
+fung_metrics <- data.frame(modularity <- fung_new_mod,
+                           connectance <- fung_conn,
+                           eton_ratio <- fung_eton_ratio
+                           )
+names(fung_metrics) <- metrics
+fung_metrics$habitat <- habs
+
+fung_mt_long <- melt(fung_metrics, id.vars = "habitat", variable.name = "category", value.name = "value")
+names(fung_mt_long) <- c("habitat", "metric", "value")
+fung_mt_long$type <- "Fungi"
+
+
+## node metric boxplots
+fung_deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(fung_deg[[i]])),
+                   metric = rep("degree", length(fung_deg[[i]])),
+                   value = fung_deg[[i]])
+  
+  fung_deg_dat[[i]] <- df
+}
+
+fung_deg_all <- do.call("rbind", fung_deg_dat)
+fung_deg_all$log_val <- log(fung_deg_all$value + 1)
+fung_deg_all$type <- "Fungi"
+
+
+fung_bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(fung_bc[[i]])),
+                   metric = rep("betweenness", length(fung_bc[[i]])),
+                   value = fung_bc[[i]])
+
+  fung_bc_dat[[i]] <- df
+}
+
+fung_bc_all <- do.call("rbind", fung_bc_dat)
+fung_bc_all$log_val <- log(fung_bc_all$value + 1)
+fung_bc_all$type <- "Fungi"
+
+```
+
+
+## 16S
+
+```{r}
+bact_nets <- bact_igraphs
+
+
+## BETWEENNESS CENTRALITY
+bact_bc <- lapply(bact_nets, betweenness)
+
+## DEGREE
+bact_deg <- lapply(bact_nets, degree)
+
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+bact_conn <- sapply(bact_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+bact_num_nodes <- sapply(bact_nets, gorder)
+bact_num_edges <- sapply(bact_nets, gsize)
+
+bact_eton_ratio <- bact_num_edges / bact_num_nodes
+
+## MODULARITY
+bact_netcarto <- readRDS("../intermediates/habitat/hab_downsamp721_netcarto.rds")[4:6]
+
+bact_new_mod <- sapply(bact_netcarto, function(x) x[[2]])
+
+
+
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
+
+bact_metrics <- data.frame(modularity <- bact_new_mod,
+                           connectance <- bact_conn,
+                           eton_ratio <- bact_eton_ratio
+                           )
+names(bact_metrics) <- metrics
+bact_metrics$habitat <- habs
+
+bact_mt_long <- melt(bact_metrics, id.vars = "habitat", variable.name = "category", value.name = "value")
+names(bact_mt_long) <- c("habitat", "metric", "value")
+bact_mt_long$type <- "Bacteria"
+
+
+## node metric boxplots
+bact_deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(bact_deg[[i]])),
+                   metric = rep("degree", length(bact_deg[[i]])),
+                   value = bact_deg[[i]])
+  
+  bact_deg_dat[[i]] <- df
+}
+
+bact_deg_all <- do.call("rbind", bact_deg_dat)
+bact_deg_all$log_val <- log(bact_deg_all$value + 1)
+bact_deg_all$type <- "Bacteria"
+
+
+bact_bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(bact_bc[[i]])),
+                   metric = rep("betweenness", length(bact_bc[[i]])),
+                   value = bact_bc[[i]])
+
+  bact_bc_dat[[i]] <- df
+}
+
+bact_bc_all <- do.call("rbind", bact_bc_dat)
+bact_bc_all$log_val <- log(bact_bc_all$value + 1)
+bact_bc_all$type <- "Bacteria"
+
+```
+
+
+## Cross
+
+```{r}
+cross_nets <- cross_igraphs
+
+
+## BETWEENNESS CENTRALITY
+cross_bc <- lapply(cross_nets, betweenness)
+
+## DEGREE
+cross_deg <- lapply(cross_nets, degree)
+
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+cross_conn <- sapply(cross_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+cross_num_nodes <- sapply(cross_nets, gorder)
+cross_num_edges <- sapply(cross_nets, gsize)
+
+cross_eton_ratio <- cross_num_edges / cross_num_nodes
+
+## MODULARITY
+cross_netcarto <- readRDS("../intermediates/habitat/hab_downsamp721_netcarto.rds")[7:9]
+
+cross_new_mod <- sapply(cross_netcarto, function(x) x[[2]])
+
+
+
+metrics <- c("Modularity", "Connectance", "Edge to Node Ratio")
+
+cross_metrics <- data.frame(modularity <- cross_new_mod,
+                           connectance <- cross_conn,
+                           eton_ratio <- cross_eton_ratio
+                           )
+names(cross_metrics) <- metrics
+cross_metrics$habitat <- habs
+
+cross_mt_long <- melt(cross_metrics, id.vars = "habitat", variable.name = "category", value.name = "value")
+names(cross_mt_long) <- c("habitat", "metric", "value")
+cross_mt_long$type <- "Interkingdom"
+
+
+## node metric boxplots
+cross_deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(cross_deg[[i]])),
+                   metric = rep("degree", length(cross_deg[[i]])),
+                   value = cross_deg[[i]])
+  
+  cross_deg_dat[[i]] <- df
+}
+
+cross_deg_all <- do.call("rbind", cross_deg_dat)
+cross_deg_all$log_val <- log(cross_deg_all$value + 1)
+cross_deg_all$type <- "Interkingdom"
+
+
+cross_bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(habitat = rep(habs[[i]], length(cross_bc[[i]])),
+                   metric = rep("betweenness", length(cross_bc[[i]])),
+                   value = cross_bc[[i]])
+
+  cross_bc_dat[[i]] <- df
+}
+
+cross_bc_all <- do.call("rbind", cross_bc_dat)
+cross_bc_all$log_val <- log(cross_bc_all$value + 1)
+cross_bc_all$type <- "Interkingdom"
+
+```
+
+
+# Combine bars
+
+```{r}
+all_metric_data <- do.call("rbind", list(fung_mt_long, bact_mt_long, cross_mt_long))
+all_metric_data$value <- as.numeric(all_metric_data$value)
+
+all_metric_data$type <- factor(all_metric_data$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
+
+
+# consistent guides
+g <- guides(fill = guide_legend(override.aes = list(fill =  paletteer_d("vapoRwave::floralShoppe")[2:4],
+                                                    color = "black")))
+
+unadjusted_full_metric_plots <- list()
+
+for (i in 1:length(metrics)) {
+  dat <- all_metric_data[all_metric_data$metric==metrics[i],]
+  
+  pl <- ggplot(dat, aes(x = habitat, y = value, fill = type)) +
+    geom_bar(stat="identity", position="dodge", key_glyph = "rect") +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_blank()) +
+    theme(axis.title.x=element_blank()) +
+    labs(title = metrics[i], fill = "Kingdom") +
+    g
+  
+  unadjusted_full_metric_plots[[i]] <- pl
+}
+
+full_metric_plots <- unadjusted_full_metric_plots
+
+# modularity
+full_metric_plots[[1]] <- unadjusted_full_metric_plots[[1]] +
+                          scale_y_continuous(breaks = seq(0, 0.7, 0.1),
+                                             limits = c(c(0, 0.7)))
+
+full_metric_plots[[2]] <- unadjusted_full_metric_plots[[2]] +
+                          scale_y_continuous(breaks = seq(0, 0.008, 0.002),
+                                             limits = c(c(0, 0.008)))
+
+
+full_metric_plots[[3]] <- unadjusted_full_metric_plots[[3]] +
+                          scale_y_continuous(breaks = seq(0, 6, 2),
+                                             limits = c(c(0, 6)))
+
+
+
+## degree boxplots
+all_deg_dat <- do.call("rbind", list(fung_deg_all, bact_deg_all, cross_deg_all))
+all_deg_dat$type <- factor(all_deg_dat$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
+
+full_deg_boxplot <- ggplot(all_deg_dat, aes(x=habitat, y=log_val, fill=type)) +
+    #geom_point(position = position_jitterdodge(dodge.width=0.7), alpha=0.3) +
+    geom_boxplot(key_glyph = "rect") +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    #scale_color_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_blank()) +
+    theme(axis.title.x=element_blank()) +
+    #scale_y_continuous(breaks = seq(0, 6, 2), limits = c(c(0, 6))) +
+    labs(title = "Degree, log-transformed", fill="Kingdom") +
+    #theme(legend.position = "none") +
+    #g +
+    guides(fill = "none")
+
+
+## btwn cent boxplots
+all_bc_dat <- do.call("rbind", list(fung_bc_all, bact_bc_all, cross_bc_all))
+all_bc_dat$type <- factor(all_bc_dat$type, levels = c("Fungi", "Bacteria", "Interkingdom"))
+
+full_bc_boxplot <- ggplot(all_bc_dat, aes(x=habitat, y=log_val, fill=type)) +
+    #geom_point(position = position_jitterdodge(dodge.width=0.7), alpha=0.3) +
+    geom_boxplot(key_glyph = "rect") +
+    scale_fill_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    scale_color_manual(values =  paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme_classic() +
+    theme(axis.text.x=element_text(colour="black",size=9)) +
+    theme(text=element_text(colour="black",size=12)) +
+    theme(axis.text.y=element_text(colour="black",size=9)) +
+    theme(axis.title.y=element_blank()) +
+    theme(axis.title.x=element_blank()) +
+    #scale_y_continuous(breaks = seq(0, 13, 2), limits = c(c(0, 12.4))) +
+    labs(title = "Betweenness Centrality, log-transformed", fill="Kingdom") +
+    #theme(legend.position = "none") +
+    #g
+    guides(fill = "none")
+
+
+
+library(patchwork)
+
+library(cowplot)
+my_legend <- get_legend(full_metric_plots[[1]])
+library(ggpubr)
+pp <- as_ggplot(my_legend)
+
+
+boot_the_legend <- function(ggplot) {
+  x = ggplot + theme(legend.position = "none")
+  return(x)
+}
+
+full_metric_plots <- lapply(full_metric_plots, boot_the_legend)
+
+
+all_plots <- full_deg_boxplot + full_bc_boxplot + pp + full_metric_plots[[1]] + full_metric_plots[[2]] + full_metric_plots[[3]] 
+
+ggsave("../figures/aug2024_revisions/metrics_bars/downsamp_habitat_metrics_collected.pdf", width=15, height=9)
+```
 
 
 

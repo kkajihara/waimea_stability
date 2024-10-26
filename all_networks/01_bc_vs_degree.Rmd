@@ -1,0 +1,186 @@
+---
+title: "01_bc_vs_degree"
+output: html_document
+date: "2024-08-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(igraph)
+```
+
+
+Goal: for each network, regress betweenness centrality over degree for each node
+
+# Watershed
+
+```{r}
+filt_fung_net <- readRDS("../intermediates/global/weighted_filt_fung_net.rds")
+filt_bact_net <- readRDS("../intermediates/global/weighted_filt_bact_net.rds")
+filt_cross_net <- readRDS("../intermediates/global/weighted_filt_cross_net.rds")
+
+filt_cross_net <- delete_vertices(filt_cross_net, "dummy")
+```
+
+```{r}
+# write a function to do the regression and plot it
+regress_and_plot <- function(network, dot_color, line_color) {
+  bc_scores <- betweenness(network)
+  deg_scores <- degree(network)
+  
+  if ( all(names(bc_scores) == names(deg_scores)) ) {
+    print("all nodes match up, proceed")
+  } else {
+    print("pause, nodes don't match")
+  }
+  
+  if (min(bc_scores)==0) {
+    bc <- log(bc_scores + 1)
+    bc_label <- "log(BC + 1)"
+  } else {
+    bc <- log(bc_scores)
+    bc_label <- "log(BC)"
+  }
+  
+  if (min(deg_scores)==0) {
+    deg <- log(deg_scores + 1)
+    deg_label <- "log(degree + 1)"
+  } else {
+    deg <- log(deg_scores)
+    deg_label <- "log(degree)"
+  }
+  
+  reg <- lm(bc ~ deg)
+  reg_sum <- summary(reg)
+  
+  dat = data.frame(btwn_cent = bc,
+                   degree = deg)
+  
+  
+  pl <- ggplot(dat, aes(x=degree, y = btwn_cent)) +
+    geom_point(color = dot_color, alpha = 0.6) +
+    stat_smooth(method = "lm", 
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = line_color) +
+    annotate("text", x = (max(dat$degree) - 0.65), y = (min(dat$btwn_cent) + 0.75), 
+             label = paste("Adj_R2 =", round(reg_sum$adj.r.squared, 3)) ) +
+    annotate("text", x = (max(dat$degree) - 0.65), y = (min(dat$btwn_cent) + 0.1), 
+             label = paste("P =", round(reg_sum$coefficients[2,4], 3))) +
+    labs(x = deg_label, y = bc_label) +
+    theme_classic() +
+    theme(axis.text = element_text(color = "black", size = 10),
+          axis.title = element_text(color = "black", size = 10)) 
+  
+
+  return(pl)
+}
+
+```
+
+```{r}
+fung_color <- stepped2()[4]
+bact_color <- stepped3()[3]
+cross_color <- stepped3()[11]
+
+
+ws_color <- tol()[1]
+hab_color <- tol()[10]
+grad_color <- tol()[12]
+hostnon_color <- alphabet()[14]
+```
+
+
+```{r}
+fung_ws <- regress_and_plot(filt_fung_net, dot_color = fung_color, line_color = ws_color)
+
+bact_ws <- regress_and_plot(filt_bact_net, dot_color = bact_color, line_color = ws_color)
+
+cross_ws <- regress_and_plot(filt_cross_net, dot_color = cross_color, line_color = ws_color)
+```
+
+# Habitat
+
+```{r}
+# stream, terrestrial, marine
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+```
+
+```{r}
+fung_hab <- lapply(fung_hab_igraphs, regress_and_plot, dot_color = fung_color, line_color = hab_color)
+
+bact_hab <- lapply(bact_hab_igraphs, regress_and_plot, dot_color = bact_color, line_color = hab_color)
+
+cross_hab <- lapply(cross_hab_igraphs, regress_and_plot, dot_color = cross_color, line_color = hab_color)
+```
+
+# Gradient
+
+```{r}
+# entrance, confluence, waterfall, drumroad, estuary, beach, ridge
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+```
+
+```{r}
+fung_grad <- lapply(fung_grad_igraphs, regress_and_plot, dot_color = fung_color, line_color = grad_color)
+
+bact_grad <- lapply(bact_grad_igraphs, regress_and_plot, dot_color = bact_color, line_color = grad_color)
+
+cross_grad <- lapply(cross_grad_igraphs, regress_and_plot, dot_color = cross_color, line_color = grad_color)
+```
+```{r}
+# reorder from bottom to top of watershed
+fung_grad <- fung_grad[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad <- bact_grad[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad <- cross_grad[c(6, 5, 1, 2, 3, 4, 7)]
+```
+
+
+
+# Host/nonhost
+
+```{r}
+# free-living, host-associated
+fung_hostnon_igraphs <- readRDS("../intermediates/hostnon/downsampled_fung_hostnon_network.rds")
+bact_hostnon_igraphs <- readRDS("../intermediates/hostnon/downsampled_bact_hostnon_network.rds")
+cross_hostnon_igraphs <- readRDS("../intermediates/hostnon/downsampled_cross_hostnon_network.rds")
+```
+
+```{r}
+fung_hostnon <- lapply(fung_hostnon_igraphs, regress_and_plot, dot_color = fung_color, line_color = hostnon_color)
+
+bact_hostnon <- lapply(bact_hostnon_igraphs, regress_and_plot, dot_color = bact_color, line_color = hostnon_color)
+
+cross_hostnon <- lapply(cross_hostnon_igraphs, regress_and_plot, dot_color = cross_color, line_color = hostnon_color)
+```
+# Putting it all together
+
+```{r}
+library(patchwork)
+
+all <- fung_ws + bact_ws + cross_ws + 
+  fung_hab[[1]] + fung_hab[[2]] + fung_hab[[3]] +
+  bact_hab[[1]] + bact_hab[[2]] + bact_hab[[3]] +
+  cross_hab[[1]] + cross_hab[[2]] + cross_hab[[3]] +
+  fung_grad[[1]] + fung_grad[[2]] + fung_grad[[3]] + fung_grad[[4]] + fung_grad[[5]] + fung_grad[[6]] + fung_grad[[7]] +
+  bact_grad[[1]] + bact_grad[[2]] + bact_grad[[3]] + bact_grad[[4]] + bact_grad[[5]] + bact_grad[[6]] + bact_grad[[7]] +
+  cross_grad[[1]] + cross_grad[[2]] + cross_grad[[3]] + cross_grad[[4]] + cross_grad[[5]] + cross_grad[[6]] + cross_grad[[7]] +
+  fung_hostnon[[1]] + fung_hostnon[[2]] + 
+  bact_hostnon[[1]] + bact_hostnon[[2]] +
+  cross_hostnon[[1]] + cross_hostnon[[2]] + 
+    plot_layout(nrow = 7, ncol = 6)
+  
+
+ggsave("../figures/aug2024_revisions/all_bc_vs_degree_color_v2.pdf", height = 23, width = 23)
+```
+
+
+

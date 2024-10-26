@@ -1,0 +1,225 @@
+---
+title: "09_degree_distribution_fitting"
+output: html_document
+date: "2024-10-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(igraph)
+library(fitdistrplus)
+library(actuar)
+```
+
+```{r}
+run_fits <- function(degreedist) {
+  dg = degreedist
+  
+  lognorm <- fitdist(dg, "lnorm")
+  pois <- fitdist(dg, "pois")
+  pareto <- fitdist(dg, "pareto")
+  weibull <- fitdist(dg, "weibull")
+  gamma <- fitdist(dg, "gamma")
+  
+  
+  gf <- gofstat(list(lognorm, pois, pareto, weibull, gamma), 
+        fitnames = c("lnorm", "poisson", "pareto", "weibull", "gamma"))
+  
+  return(gf)
+  #return(as.data.frame(gf[12]))
+}
+```
+
+
+```{r}
+# networks
+fullws_fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+fullws_bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+fullws_cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+fung_grad_igraphs <- fung_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_igraphs <- bact_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_igraphs <- cross_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+```
+
+```{r}
+# watershed
+ws_nets <- list(fullws_fung_net, fullws_bact_net, fullws_cross_net)
+ws_nets_noislands <- lapply(ws_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+ws_deg <- lapply(ws_nets_noislands, degree)
+
+ws_gofs <- lapply(ws_deg, run_fits)
+lapply(ws_gofs, function(x) x$aic)
+lapply(ws_gofs, function(x) min(x$aic))
+lapply(ws_gofs, function(x) x$kstest)
+lapply(ws_gofs, function(x) x$chisqpvalue)
+
+
+
+# habitat - stream, terr, marine
+fung_hab_nets <- fung_hab_igraphs
+fung_hab_nets_noislands <- lapply(fung_hab_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+fung_hab_deg <- lapply(fung_hab_nets_noislands, degree)
+
+fung_hab_gofs <- lapply(fung_hab_deg, run_fits)
+lapply(fung_hab_gofs, function(x) x$aic)
+lapply(fung_hab_gofs, function(x) min(x$aic))
+lapply(fung_hab_gofs, function(x) x$kstest)
+lapply(fung_hab_gofs, function(x) x$chisqpvalue)
+
+
+bact_hab_nets <- bact_hab_igraphs
+bact_hab_nets_noislands <- lapply(bact_hab_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+bact_hab_deg <- lapply(bact_hab_nets_noislands, degree)
+
+bact_hab_gofs <- lapply(bact_hab_deg, run_fits)
+lapply(bact_hab_gofs, function(x) x$aic)
+lapply(bact_hab_gofs, function(x) min(x$aic))
+lapply(bact_hab_gofs, function(x) x$kstest)
+lapply(bact_hab_gofs, function(x) x$chisqpvalue)
+
+
+cross_hab_nets <- cross_hab_igraphs
+cross_hab_nets_noislands <- lapply(cross_hab_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+cross_hab_deg <- lapply(cross_hab_nets_noislands, degree)
+
+cross_hab_gofs <- lapply(cross_hab_deg, run_fits)
+lapply(cross_hab_gofs, function(x) x$aic)
+lapply(cross_hab_gofs, function(x) min(x$aic))
+lapply(cross_hab_gofs, function(x) x$kstest)
+lapply(cross_hab_gofs, function(x) x$chisqpvalue)
+
+
+
+# gradient -in order
+sites <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+fung_grad_nets <- fung_grad_igraphs
+fung_grad_nets_noislands <- lapply(fung_grad_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+fung_grad_deg <- lapply(fung_grad_nets_noislands, degree)
+
+fung_grad_gofs <- lapply(fung_grad_deg, run_fits)
+names(fung_grad_gofs) <- sites
+lapply(fung_grad_gofs, function(x) x$aic)
+lapply(fung_grad_gofs, function(x) min(x$aic))
+lapply(fung_grad_gofs, function(x) x$kstest)
+lapply(fung_grad_gofs, function(x) x$chisqpvalue)
+
+
+bact_grad_nets <- bact_grad_igraphs
+bact_grad_nets_noislands <- lapply(bact_grad_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+bact_grad_deg <- lapply(bact_grad_nets_noislands, degree)
+
+bact_grad_gofs <- lapply(bact_grad_deg, run_fits)
+names(bact_grad_gofs) <- sites
+lapply(bact_grad_gofs, function(x) x$aic)
+lapply(bact_grad_gofs, function(x) min(x$aic))
+lapply(bact_grad_gofs, function(x) x$kstest)
+lapply(bact_grad_gofs, function(x) x$chisqpvalue)
+
+
+cross_grad_nets <- cross_grad_igraphs
+cross_grad_nets_noislands <- lapply(cross_grad_nets, function(x) delete_vertices(x, which(degree(x)==0)))
+
+cross_grad_deg <- lapply(cross_grad_nets_noislands, degree)
+
+cross_grad_gofs <- lapply(cross_grad_deg, run_fits)
+names(cross_grad_gofs) <- sites
+lapply(cross_grad_gofs, function(x) x$aic)
+lapply(cross_grad_gofs, function(x) min(x$aic))
+lapply(cross_grad_gofs, function(x) x$kstest)
+lapply(cross_grad_gofs, function(x) x$chisqpvalue)
+
+
+```
+
+
+```{r}
+
+
+hist(degree(kacie$Bacteria_Terrestrial))
+hist(degree(kacie$Interkingdom_Terrestrial))
+hist(degree(kacie$Interkingdom_Stream))
+
+degree_bac_ter = degree(kacie$Bacteria_Terrestrial)
+degree_ik_ter = degree(kacie$Interkingdom_Terrestrial)
+degree_ik_st = degree(kacie$Interkingdom_Stream)
+
+table(degree_bac_ter)
+table(degree_ik_ter)
+table(degree_ik_st)
+
+dg = degree_bac_ter
+
+lognorm <- fitdist(dg, "lnorm")
+pois <- fitdist(dg, "pois")
+pareto <- fitdist(dg, "pareto")
+weibull <- fitdist(dg, "weibull")
+gamma <- fitdist(dg, "gamma")
+
+gofstat(list(lognorm, pois, pareto, weibull, gamma), 
+        fitnames = c("lnorm", "poisson", "pareto", "weibull", "gamma"))
+
+gofstat(list(lognorm, weibull), 
+        fitnames = c("lnorm", "weibull"))
+
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+plot.legend <- c("lnorm", "pois", "pareto", "weibull", "gamma")
+denscomp(list(lognorm, pois, pareto, weibull, gamma), legendtext = plot.legend)
+qqcomp(list(lognorm, pois, pareto, weibull, gamma), legendtext = plot.legend)
+cdfcomp(list(lognorm, pois, pareto, weibull, gamma), legendtext = plot.legend)
+ppcomp(list(lognorm, pois, pareto, weibull, gamma), legendtext = plot.legend)
+
+```
+
+Do clustering coefficient vs connectance for non-power law networks
+
+Bacteria watershed
+Interkingdom watershed
+
+Interkingdom stream
+Bacteria terrestrial
+Interkingdom terrestrial
+
+```{r}
+# connectance
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+bact_ws <- fullws_bact_net
+cross_ws <- fullws_cross_net
+
+cross_stream <- cross_hab_igraphs[[1]]
+bact_terr <- bact_hab_igraphs[[2]]
+cross_terr <- cross_hab_igraphs[[2]]
+
+mynets <- list(bact_ws, cross_ws, cross_stream, bact_terr, cross_terr)
+
+df <- data.frame(type = c("Watershed", "Watershed", "Habitat", "Habitat", "Habitat"),
+                 kingdom = c("Bacteria", "Interkingdom", "Interkingdom", "Bacteria", "Interkingdom"),
+                 habitat = c("All", "All", "Stream", "Terrestrial", "Terresrial"))
+
+df$cc <- sapply(mynets, transitivity)
+df$connectance <- sapply(mynets, connectance)
+
+write.csv(df, "../outputs/clusteringcoef_vs_connectance.csv")
+```
+
+

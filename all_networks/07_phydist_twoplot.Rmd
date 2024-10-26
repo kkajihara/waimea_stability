@@ -1,0 +1,70 @@
+---
+title: "07_phydist_twoplot"
+output: html_document
+date: "2024-10-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+full_bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+```
+
+
+```{r}
+# habitat
+samp_dat <- readRDS("../intermediates/habitat/picante_by_sample_habitat_results.rds")
+samp_dat$sample <- rownames(samp_dat)
+
+samp_dat$habitat <- full_bact_meta$habitat[match(samp_dat$sample, full_bact_meta$sample_id)]
+
+library(wesanderson)
+hab_mpd_bar <- ggplot(samp_dat, aes(x=habitat, y=mpd.obs.z)) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[2], size=0.8, alpha=0.7, width=0.2) +
+    geom_boxplot(width=0.5,fill = wes_palette("GrandBudapest2")[2]) +
+    scale_y_continuous(breaks = seq(-3, 4, 3), limits = c(c(-3, 4))) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.background=element_blank(),
+          axis.line = element_line(colour="black"),
+          axis.text.y = element_text(size=12, colour="black"),
+          axis.title = element_text(size=16),
+          plot.title = element_text(size=18),
+          legend.position = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  labs(title= "Habitat", y = "Standardized Effect Score", x="Habitat") 
+
+
+
+# gradient
+grad_samp_dat <- readRDS("../intermediates/gradient/terrestrial/samp_phydist_data.rds") 
+
+library(wesanderson)
+grad_mpd_bar <- ggplot(grad_samp_dat, aes(x=plot, y=mpd.obs.z)) +
+    geom_jitter(color=wes_palette("GrandBudapest2")[4], size=0.8, alpha=0.7, width=0.2) +
+    geom_boxplot(width=0.5,fill = wes_palette("GrandBudapest2")[4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.background=element_blank(),
+          axis.line = element_line(colour="black"),
+          axis.text.y = element_text(size=12, colour="black"),
+          axis.title = element_text(size=16),
+          plot.title = element_text(size=18),
+          legend.position = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+    labs(title= "Gradient", y = "Standardized Effect Score", x="Habitat") +
+  scale_y_continuous(breaks = seq(-4, 6, 4), limits = c(c(-4, 6))) 
+
+
+library(patchwork)
+twop <- hab_mpd_bar + grad_mpd_bar
+
+ggsave("../figures/aug2024_revisions/phydist_twoplot.pdf", twop, height = 7, width = 14)
+```
+

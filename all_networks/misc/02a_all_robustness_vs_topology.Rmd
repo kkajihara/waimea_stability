@@ -1,0 +1,467 @@
+---
+title: "02a_all_robustness_vs_topology"
+output: html_document
+date: "2024-09-06"
+---
+
+
+All networks, full networks not downsampled
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(igraph)
+library(ggplot2)
+
+#habitat_palette <- c("#3F5671", "#83A1C3", "#B9D6B6")
+```
+
+
+```{r}
+regress_df <- readRDS("../intermediates/new_knockouts/all_auc_values.rds")
+
+## CHANGE WHOLE WATERSHED TO FULL NETWORKS NOT DOWNSAMPLED
+fullws_fung_bc <- readRDS("../intermediates/new_knockouts/whole_fung_watershed_bc_knockouts.rds")
+fullws_bact_bc <- readRDS("../intermediates/new_knockouts/whole_bact_watershed_bc_knockouts.rds")
+fullws_cross_bc <- readRDS("../intermediates/new_knockouts/whole_cross_watershed_bc_knockouts.rds")
+
+get_auc <- function(robustness_table) {
+  xx = integrate(approxfun(robustness_table$removed.pct, robustness_table$comp.pct), 0, 1, subdivisions = 1000)$value
+  
+  return(xx)
+}
+
+full_ws_robust <- sapply(list(fullws_fung_bc, fullws_bact_bc, fullws_cross_bc), get_auc)
+
+regress_df$robustness[regress_df$category=="Watershed"] = full_ws_robust
+
+# networks
+fullws_fung_net <- readRDS("../intermediates/global/fung20_igraph.rds")
+fullws_bact_net <- readRDS("../intermediates/global/bact20_igraph.rds")
+fullws_cross_net <- readRDS("../intermediates/global/cross20_igraph.rds")
+
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+fung_grad_igraphs <- fung_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_igraphs <- bact_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_igraphs <- cross_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+```
+
+modularity
+```{r}
+# watershed
+fung_netcarto <- readRDS("../intermediates/global/fung_netcarto_results.rds")
+bact_netcarto <- readRDS("../intermediates/global/bact_netcarto_results.rds")
+cross_netcarto <- readRDS("../intermediates/global/cross_netcarto_results.rds")
+
+fung_ws_mod <- fung_netcarto[[2]]
+bact_ws_mod <- bact_netcarto[[2]]
+cross_ws_mod <- cross_netcarto[[2]]
+
+
+# habitat
+fung_hab_netc <- readRDS("../intermediates/habitat/fung_habitat_netcarto_results.rds")
+fung_hab_mod <- sapply(fung_hab_netc, function(x) x[[2]])
+
+bact_netc <- readRDS("../intermediates/habitat/bact_habitat_netcarto_results.rds")
+bact_hab_mod <- sapply(bact_netc, function(x) x[[2]])
+
+cross_netc <- readRDS("../intermediates/habitat/cross_habitat_netcarto_results.rds")
+cross_hab_mod <- sapply(cross_netc, function(x) x[[2]])
+
+# gradient
+fung_grad_netc <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_netcarto_results.rds")
+fung_grad_mod <- sapply(fung_grad_netc, function(x) x[[2]])
+
+bact_netc <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_netcarto_results.rds")
+bact_grad_mod <- sapply(bact_netc, function(x) x[[2]])
+
+cross_netc <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_netcarto_results.rds")
+cross_grad_mod <- sapply(cross_netc, function(x) x[[2]])
+
+# reorder from bottom to top of watershed
+fung_grad_mod <- fung_grad_mod[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_mod <- bact_grad_mod[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_mod <- cross_grad_mod[c(6, 5, 1, 2, 3, 4, 7)]
+
+
+regress_df$modularity <- c(fung_ws_mod, bact_ws_mod, cross_ws_mod,
+                         fung_hab_mod, bact_hab_mod, cross_hab_mod,
+                         fung_grad_mod, bact_grad_mod, cross_grad_mod)
+```
+
+richness
+
+```{r}
+richy = list(fullws_fung_net, fullws_bact_net, fullws_cross_net)
+big_net_list <- c(richy,
+                  fung_hab_igraphs, bact_hab_igraphs, cross_hab_igraphs,
+                  fung_grad_igraphs, bact_grad_igraphs, cross_grad_igraphs)
+
+# richness
+regress_df$richness <- sapply(big_net_list,gorder)
+```
+
+```{r}
+# connectance
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+regress_df$connectance <- sapply(big_net_list, connectance)
+
+```
+
+```{r}
+# ratio of edges to nodes
+regress_df$num_nodes <- sapply(big_net_list, gorder)
+regress_df$num_edges <- sapply(big_net_list, gsize)
+
+regress_df$ratio <- regress_df$num_edges / regress_df$num_nodes
+```
+
+
+```{r} 
+ws_neg_edges <- readRDS("../intermediates/global/full_ws_neg_edge_pcts.rds")$neg_pct
+
+# percent negative edges
+hab_neg_edges <- readRDS("../intermediates/habitat/hab_neg_pct.rds") 
+hab_neg_pct <- hab_neg_edges$neg_pct
+
+
+grad_neg_edges <- readRDS("../intermediates/gradient/terrestrial/neg_edges_gradient.rds")
+grad_neg <- lapply(grad_neg_edges, function(x) x[c(6,5,1,2,3,4,7),])
+
+grad_neg_pct <- c(sapply(grad_neg, function(x) x$neg_pct))
+
+
+regress_df$neg_pct <- c(ws_neg_edges, hab_neg_pct, grad_neg_pct)
+```
+
+```{r}
+ratio_lm <- summary(lm(robustness ~ ratio, data = regress_df))
+
+ratio_pl <- ggplot(data = regress_df, aes(x = ratio, y = robustness, color = category, shape = kingdom)) +
+      stat_smooth(method = "lm", 
+                  aes(group = 1),
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = "darkgrey",
+              alpha = 0.5) +
+    geom_point(size = 5, alpha = 0.8) +
+  annotate("text", x = 40, y = 0.03, label = paste("Adj_R2 =", round(ratio_lm$adj.r.squared, 3))) +
+  annotate("text", x = 40, y = 0.01, label = paste("P =", round(ratio_lm$coefficients[2,4], 3))) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10)) +
+  guides(color = "none", shape = "none") +
+  labs(x = "Ratio of edges to nodes", y = "Robustness") 
+  # scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+  #                             limits = c(c(0, 0.3)))
+
+
+pct_neg_lm <- summary(lm(robustness ~ neg_pct, data = regress_df))
+
+pct_neg_pl <- ggplot(data = regress_df, aes(x = neg_pct, y = robustness, color = category, shape = kingdom)) +
+      stat_smooth(method = "lm", 
+                  aes(group = 1),
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = "darkgrey",
+              alpha = 0.5) +
+    geom_point(size = 5, alpha = 0.8) +
+  annotate("text", x = 0.28, y = 0.03, label = paste("Adj_R2 =", round(pct_neg_lm$adj.r.squared, 3))) +
+  annotate("text", x = 0.28, y = 0.01, label = paste("P =", round(pct_neg_lm$coefficients[2,4], 3))) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10)) +
+  guides(color = "none", shape = "none") +
+  labs(x = "Proportion of Negative Edges", y = "Robustness") 
+  # scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+  #                             limits = c(c(0, 0.3)))
+```
+
+
+
+Plot!
+
+```{r}
+mod_lm <- summary(lm(robustness ~ modularity, data = regress_df))
+
+mod_pl <- ggplot(data = regress_df, aes(x = modularity, y = robustness, color = category, shape = kingdom)) +
+      stat_smooth(method = "lm", 
+                  aes(group = 1),
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = "darkgrey",
+              alpha = 0.5) +
+    geom_point(size = 5, alpha = 0.8) +
+  annotate("text", x = 0.52, y = 0.03, label = paste("Adj_R2 =", round(mod_lm$adj.r.squared, 3))) +
+  annotate("text", x = 0.52, y = 0.01, label = paste("P =", round(mod_lm$coefficients[2,4], 3))) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10)) +
+  guides(color = "none", shape = "none") +
+  labs(x = "Modularity", y = "Robustness") 
+  # scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+  #                             limits = c(c(0, 0.3)))
+
+
+
+rich_lm <- summary(lm(robustness ~ richness, data = regress_df))
+
+rich_pl <- ggplot(data = regress_df, aes(x = richness, y = robustness, color = category, shape = kingdom)) +
+      stat_smooth(method = "lm", 
+                  aes(group = 1),
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = "darkgrey",
+              alpha = 0.5) +
+    geom_point(size = 5, alpha = 0.8) +
+  annotate("text", x = 7500, y = 0.03, label = paste("Adj_R2 =", round(rich_lm$adj.r.squared, 3))) +
+  annotate("text", x = 7500, y = 0.01, label = paste("P =", round(rich_lm$coefficients[2,4], 3))) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10)) +
+  guides(color = "none", shape = "none") +
+  labs(x = "Richness", y = "Robustness") 
+  # scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+  #                             limits = c(c(0, 0.3)))
+
+
+
+conn_lm <- summary(lm(robustness ~ connectance, data = regress_df))
+
+conn_pl <- ggplot(data = regress_df, aes(x = connectance, y = robustness, color = category, shape = kingdom)) +
+      stat_smooth(method = "lm", 
+                  aes(group = 1),
+              formula = y ~ x, 
+              geom = "smooth",
+              se = F,
+              color = "darkgrey",
+              alpha = 0.5) +
+    geom_point(size = 5, alpha = 0.8) +
+  annotate("text", x = 0.0025, y = 0.03, label = paste("Adj_R2 =", round(conn_lm$adj.r.squared, 3))) +
+  annotate("text", x = 0.0025, y = 0.01, label = paste("P =", round(conn_lm$coefficients[2,4], 3))) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10)) +
+  labs(x = "Connectance", y = "Robustness") 
+  # scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+  #                             limits = c(c(0, 0.3)))
+```
+
+
+```{r}
+library(patchwork)
+
+library(cowplot)
+my_legend <- get_legend(conn_pl)
+library(ggpubr)
+pp <- as_ggplot(my_legend)
+
+
+conn_pl <- conn_pl + theme(legend.position = "none")
+
+plots <- mod_pl + rich_pl + conn_pl + ratio_pl + pct_neg_pl + pp + plot_layout(ncol = 3)
+
+ggsave("../figures/aug2024_revisions/all_FULL_networks_robustness_vs_complexity_regressions.pdf", width = 14, height=9)
+```
+
+```{r}
+# mod_lm_nomf <- summary(lm(robustness ~ modularity, data = regress_df_nomarfung))
+# 
+# mod_pl_nomf <- ggplot(data = regress_df_nomarfung, aes(x = modularity, y = robustness, color = habitat, shape = kingdom)) +
+#   geom_point(size = 3) +
+#       stat_smooth(method = "lm", 
+#                   aes(group = 1),
+#               formula = y ~ x, 
+#               geom = "smooth",
+#               se = F,
+#               color = "black") +
+#   annotate("text", x = 0.52, y = 0.11, label = paste("Adj_R2 =", round(mod_lm_nomf$adj.r.squared, 3))) +
+#   annotate("text", x = 0.52, y = 0.095, label = paste("P =", round(mod_lm_nomf$coefficients[2,4], 3))) +
+#   theme_classic() +
+#   theme(axis.text = element_text(color = "black", size = 10)) +
+#   guides(color = "none", shape = "none") +
+#   labs(x = "Modularity", y = "Robustness")
+# 
+# 
+# 
+# rich_lm_nomf <- summary(lm(robustness ~ richness, data = regress_df_nomarfung))
+# 
+# rich_pl_nomf <- ggplot(data = regress_df_nomarfung, aes(x = richness, y = robustness, color = habitat, shape = kingdom)) +
+#   geom_point(size = 3) +
+#       stat_smooth(method = "lm", 
+#                   aes(group = 1),
+#               formula = y ~ x, 
+#               geom = "smooth",
+#               se = F,
+#               color = "black") +
+#   annotate("text", x = 7500, y = 0.11, label = paste("Adj_R2 =", round(rich_lm_nomf$adj.r.squared, 3))) +
+#   annotate("text", x = 7500, y = 0.095, label = paste("P =", round(rich_lm_nomf$coefficients[2,4], 3))) +
+#   theme_classic() +
+#   theme(axis.text = element_text(color = "black", size = 10)) +
+#   guides(color = "none", shape = "none") +
+#   labs(x = "Richness", y = "Robustness")
+# 
+# 
+# 
+# conn_lm_nomf <- summary(lm(robustness ~ connectance, data = regress_df_nomarfung))
+# 
+# conn_pl_nomf <- ggplot(data = regress_df_nomarfung, aes(x = connectance, y = robustness, color = habitat, shape = kingdom)) +
+#   geom_point(size = 3) +
+#       stat_smooth(method = "lm", 
+#                   aes(group = 1),
+#               formula = y ~ x, 
+#               geom = "smooth",
+#               se = F,
+#               color = "black") +
+#   annotate("text", x = 0.0023, y = 0.11, label = paste("Adj_R2 =", round(conn_lm_nomf$adj.r.squared, 3))) +
+#   annotate("text", x = 0.0023, y = 0.095, label = paste("P =", round(conn_lm_nomf$coefficients[2,4], 3))) +
+#   theme_classic() +
+#   theme(axis.text = element_text(color = "black", size = 10)) +
+#   labs(x = "Connectance", y = "Robustness")
+```
+
+
+```{r}
+# library(patchwork)
+# 
+# plots_nomf <- mod_pl_nomf + rich_pl_nomf + conn_pl_nomf
+```
+
+Efficiency and original AUC comparison
+
+```{r}
+fung_ws <- readRDS("../intermediates/new_knockouts/fung_watershed_efficiency_knockouts.rds")
+bact_ws <- readRDS("../intermediates/new_knockouts/bact_watershed_efficiency_knockouts.rds")
+cross_ws <- readRDS("../intermediates/new_knockouts/cross_watershed_efficiency_knockouts.rds")
+
+
+ws_eff_auc <- lapply(list(fung_ws, bact_ws, cross_ws),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+old_ws <- readRDS("../intermediates/new_knockouts/whole_watershed_bc_knockouts.rds")
+
+fung_old_ws <- old_ws[old_ws$kingdom=="Fungi" & old_ws$type=="btwncent",]
+bact_old_ws <- old_ws[old_ws$kingdom=="Bacteria" & old_ws$type=="btwncent",]
+cross_old_ws <- old_ws[old_ws$kingdom=="Interkingdom" & old_ws$type=="btwncent",]
+
+ws_bc_auc <- lapply(list(fung_old_ws, bact_old_ws, cross_old_ws),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+
+marine_fung <- readRDS("../intermediates/new_knockouts/marine_fungi_efficiency_knockouts.rds")
+marine_bact <- readRDS("../intermediates/new_knockouts/marine_bact_efficiency_knockouts.rds")
+marine_cross <- readRDS("../intermediates/new_knockouts/marine_cross_efficiency_knockouts.rds")
+
+mar_eff_auc <- lapply(list(marine_fung, marine_bact, marine_cross),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+mar_old_fung <- readRDS("../intermediates/new_knockouts/fung_habitat_knockouts.rds")[[1]][[3]]
+mar_old_bact <- readRDS("../intermediates/new_knockouts/bact_habitat_knockouts.rds")[[1]][[3]]
+mar_old_cross <- readRDS("../intermediates/new_knockouts/cross_habitat_knockouts.rds")[[1]][[3]]
+
+
+mar_bc_auc <- lapply(list(mar_old_fung, mar_old_bact, mar_old_cross),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+compar = data.frame(watershed_original = unlist(ws_bc_auc),
+                    watershed_efficiency = unlist(ws_eff_auc),
+                    marine_original = unlist(mar_bc_auc),
+                    marine_efficiency = unlist(mar_eff_auc))
+
+row.names(compar) = c("Fungi", "Bacteria", "Interkingdom")
+
+```
+
+Test efficiency for marine vs largest component
+
+```{r}
+
+marine_fung <- readRDS("../intermediates/new_knockouts/marine_fungi_efficiency_knockouts.rds")
+marine_bact <- readRDS("../intermediates/new_knockouts/marine_bact_efficiency_knockouts.rds")
+marine_cross <- readRDS("../intermediates/new_knockouts/marine_cross_efficiency_knockouts.rds")
+
+mar_eff_auc <- lapply(list(marine_fung, marine_bact, marine_cross),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+mar_old_fung <- readRDS("../intermediates/new_knockouts/fung_habitat_knockouts.rds")[[1]][[3]]
+mar_old_bact <- readRDS("../intermediates/new_knockouts/bact_habitat_knockouts.rds")[[1]][[3]]
+mar_old_cross <- readRDS("../intermediates/new_knockouts/cross_habitat_knockouts.rds")[[1]][[3]]
+
+
+mar_bc_auc <- lapply(list(mar_old_fung, mar_old_bact, mar_old_cross),
+                  function(x)
+                    integrate(approxfun(x$removed.pct, x$comp.pct), 0, 1, subdivisions = 1000)$value
+                  )
+
+
+new <- data.frame(auc = c(unlist(mar_bc_auc), unlist(mar_eff_auc)))
+new$type = c(rep("largest_component", 3),
+             rep("efficiency", 3))
+new$kingdom = rep(c("Fungi", "Bacteria", "Interkingdom"), 2)
+
+
+mar <- regress_df[regress_df$habitat=="Marine",]
+
+mar = mar[,c(2,4:9)]
+mar = rbind(mar, mar)
+
+new <- cbind(new, mar)
+
+mmod <- ggplot(new, aes(x = modularity, y = auc, shape = type, color = type)) +
+  geom_point(size = 4) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+rrich <- ggplot(new, aes(x = richness, y = auc, shape = type, color = type)) +
+  geom_point(size = 4) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+
+cconn <- ggplot(new, aes(x = connectance, y = auc, shape = type, color = type)) +
+  geom_point(size = 4) +
+  theme_classic()
+
+rrat <- ggplot(new, aes(x = ratio, y = auc, shape = type, color = type)) +
+  geom_point(size = 4) +
+  theme_classic() +
+  labs(x = "Ratio of edges to nodes") +
+  theme(legend.position = "none")
+  
+
+library(patchwork)
+
+xx = mmod + rrich+ rrat +  cconn + plot_layout(nrow = 2)
+
+```
+
+
+
+

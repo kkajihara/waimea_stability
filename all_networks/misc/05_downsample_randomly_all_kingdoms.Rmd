@@ -1,0 +1,700 @@
+---
+title: "05_downsample_all_kingdoms"
+output: html_document
+date: "2024-09-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+```
+
+
+```{r}
+# networks
+# filt_fung_net <- readRDS("../intermediates/global/weighted_filt_fung_net.rds")
+# filt_bact_net <- readRDS("../intermediates/global/weighted_filt_bact_net.rds")
+# filt_cross_net <- readRDS("../intermediates/global/weighted_filt_cross_net.rds")
+
+fung_hab_igraphs <- readRDS("../intermediates/habitat/fung_habitat_igraphs.rds")
+bact_hab_igraphs <- readRDS("../intermediates/habitat/bact_habitat_igraphs.rds")
+cross_hab_igraphs <- readRDS("../intermediates/habitat/cross_habitat_igraphs.rds")
+
+fung_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/fung_gradient_igraphs.rds")
+bact_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/bact_gradient_igraphs.rds")
+cross_grad_igraphs <- readRDS("../intermediates/gradient/terrestrial/cross_gradient_igraphs.rds")
+
+fung_grad_igraphs <- fung_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_igraphs <- bact_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_igraphs <- cross_grad_igraphs[c(6, 5, 1, 2, 3, 4, 7)]
+
+test = list(filt_fung_net, filt_bact_net, filt_cross_net)
+big_net_list <- c(test,
+                  fung_hab_igraphs, bact_hab_igraphs, cross_hab_igraphs,
+                  fung_grad_igraphs, bact_grad_igraphs, cross_grad_igraphs)
+
+
+source("~/hynson_koastore/kaciekaj/waimea_current/misc/new_knockout_functions.R")
+```
+
+```{r}
+g = filt_fung_net
+
+subnetwork <- induced.subgraph(g, vids = sample(V(g)$name, size = 719))
+
+set.seed(134)
+all_net_subgraphs <- lapply(big_net_list,
+                            function(x)
+                              induced.subgraph(x, sample(V(x)$name, size = 719)))
+
+
+a = myrobustness_bc(all_net_subgraphs[[1]], kingdom = "Fungi")
+
+test = lapply(all_net_subgraphs, function(x) myrobustness_bc(x, kingdom = "placeholder"))
+
+
+saveRDS(test, "../intermediates/new_knockouts/new_downsamp719_all_network_bc_knockouts.rds")
+```
+
+
+```{r}
+get_auc <- function(robustness_table) {
+  xx = integrate(approxfun(robustness_table$removed.pct, robustness_table$comp.pct), 0, 1, subdivisions = 1000)$value
+  
+  return(xx)
+}
+
+
+all_aucs <- sapply(test, get_auc)
+
+old_regress_df <- readRDS("../intermediates/new_knockouts/all_auc_values.rds")
+old_regress_df$type = rep("Original", nrow(old_regress_df))
+
+regress_df <- readRDS("../intermediates/new_knockouts/all_auc_values.rds")
+regress_df$robustness <- all_aucs
+regress_df$type = rep("Downsampled to 719 nodes", nrow(regress_df))
+
+all_dat <- rbind(old_regress_df, regress_df)
+
+LETTERS702 <- c(LETTERS, sapply(LETTERS, function(x) paste0(x, LETTERS)))
+
+all_dat$network <- rep(LETTERS702[1:33],2)
+
+pl <- ggplot(all_dat, aes(x = network, y = robustness, size = type, color = category, shape = kingdom)) +
+  geom_point()
+
+plot(old_regress_df$robustness ~ regress_df$robustness)
+
+```
+Test on habitats - downsample to top n taxa by relative abundance
+
+```{r}
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+take_top <- function (network, otu_table, number_to_take) {
+  taxa = V(network)$name
+  filt_otu <- otu_table[rownames(otu_table) %in% taxa,]
+  filt_otu <- filt_otu[,colSums(filt_otu)>0]
+  
+  otus <- data.frame(OTU = rownames(filt_otu),
+                     sum = rowSums(filt_otu))
+  
+  otus <- otus[order(otus$sum, decreasing=TRUE),]
+  
+  top_n <- otus[1:number_to_take,]
+  
+  tab <- otu_table[rownames(otu_table) %in% top_n$OTU,]
+  tab <- tab[,colSums(tab) > 0]
+  
+  return(tab)
+}
+ 
+
+fung_new = lapply(fung_hab_igraphs, take_top, otu_table = fung_abun, number_to_take = 918)
+
+fung_top_n <- lapply(fung_new, function(x) as.data.frame(t(x)))
+
+
+remove_nodes <- function(network, top_taxa_table) {
+  all_nodes <- V(network)$name
+  
+  to_keep <- colnames(top_taxa_table)
+  
+  to_remove <- all_nodes[!(all_nodes %in% to_keep)]
+  
+  new_network <- delete_vertices(network, to_remove)
+  
+  return(new_network)
+}
+
+new_fung_igraphs = mapply(remove_nodes,
+              network = fung_hab_igraphs,
+              top_taxa_table = fung_top_n,
+              SIMPLIFY = FALSE)
+
+saveRDS(new_fung_igraphs, "../intermediates/habitat/fung_downsamp918_igraphs.rds")
+
+# bact
+bact_new = lapply(bact_hab_igraphs, take_top, otu_table = bact_abun, number_to_take = 918)
+
+bact_top_n <- lapply(bact_new, function(x) as.data.frame(t(x)))
+
+new_bact_igraphs = mapply(remove_nodes,
+              network = bact_hab_igraphs,
+              top_taxa_table = bact_top_n,
+              SIMPLIFY = FALSE)
+
+saveRDS(new_bact_igraphs, "../intermediates/habitat/bact_downsamp918_igraphs.rds")
+
+# cross
+cross_filt <- function(cross_net, filt_fung_net, filt_bact_net) {
+  new_nodelist <- c(V(filt_fung_net)$name, V(filt_bact_net)$name)
+  
+  all_nodes <- V(cross_net)$name
+  
+  to_remove <- all_nodes[!(all_nodes %in% new_nodelist)]
+  
+  new_cross <- delete_vertices(cross_net, to_remove)
+  
+  return(new_cross)
+}
+
+new_cross_igraphs <- list()
+for (i in 1:3){
+  new_cross_igraphs[[i]] <- cross_filt(cross_hab_igraphs[[i]],
+                                       new_fung_igraphs[[i]],
+                                       new_bact_igraphs[[i]])
+}
+
+set.seed(134)
+equal_downsamp_cross <- lapply(new_cross_igraphs,
+                            function(x)
+                              induced.subgraph(x, sample(V(x)$name, size = 918)))
+
+saveRDS(equal_downsamp_cross, "../intermediates/habitat/cross_downsamp918_igraphs.rds")
+
+lapply(equal_downsamp_cross, gorder)
+
+
+
+hab_bc <- lapply(c(new_fung_igraphs, new_bact_igraphs, equal_downsamp_cross), 
+                 function(x) myrobustness_bc(x, kingdom = "placeholder"))
+
+saveRDS(hab_bc, "../intermediates/habitat/hab_downsamp918_bc_knockouts.rds")
+
+
+fung_rob <- hab_bc[1:3]
+bact_rob <- hab_bc[4:6]
+cross_rob <- hab_bc[7:9]
+
+prep_tbl <- function(list_of_robustness_tables,  kingdom) {
+  dat <- do.call("rbind", list_of_robustness_tables)
+  dat$kingdom = c(rep(kingdom, nrow(dat)))
+  
+  return(dat)
+}
+
+fung_robustness <- prep_tbl(fung_rob, "Fungi")
+bact_robustness <- prep_tbl(bact_rob, "Bacteria")
+cross_robustness <- prep_tbl(cross_rob, "Interkingdom")
+
+
+fung_robustness$habitat = c(rep("Stream", 919), 
+                  rep("Terrestrial", 919), 
+                  rep("Marine", 919))
+
+bact_robustness$habitat = c(rep("Stream", 919), 
+                  rep("Terrestrial", 919), 
+                  rep("Marine", 919))
+
+cross_robustness$habitat = c(rep("Stream", 919), 
+                  rep("Terrestrial", 919), 
+                  rep("Marine", 919))
+
+all_stream <- rbind(fung_robustness[fung_robustness$habitat=="Stream",],
+                    bact_robustness[bact_robustness$habitat=="Stream",],
+                    cross_robustness[cross_robustness$habitat=="Stream",])
+
+all_terr <- rbind(fung_robustness[fung_robustness$habitat=="Terrestrial",],
+                    bact_robustness[bact_robustness$habitat=="Terrestrial",],
+                    cross_robustness[cross_robustness$habitat=="Terrestrial",])
+
+all_marine <- rbind(fung_robustness[fung_robustness$habitat=="Marine",],
+                    bact_robustness[bact_robustness$habitat=="Marine",],
+                    cross_robustness[cross_robustness$habitat=="Marine",])
+
+
+library(paletteer)
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+
+
+stream_bc_plot <- ggplot(all_stream, aes(x=removed.pct, y=comp.pct, color=kingdom, group = kingdom, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Stream Top 918", linetype = "Type") +
+  scale_color_manual(values = kingdom_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = "none", linetype = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+terr_bc_plot <- ggplot(all_terr, aes(x=removed.pct, y=comp.pct, color=kingdom, group = kingdom, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Terrestrial Top 918", linetype = "Type") +
+   scale_color_manual(values = kingdom_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = "none", linetype = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+marine_bc_plot <- ggplot(all_marine, aes(x=removed.pct, y=comp.pct, color=kingdom, group = kingdom, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Marine Top 918", linetype = "Type") +
+   scale_color_manual(values = kingdom_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+library(patchwork)
+
+hab_plots <- stream_bc_plot + terr_bc_plot + marine_bc_plot
+
+
+
+get_auc <- function(robustness_table) {
+  xx = integrate(approxfun(robustness_table$removed.pct, robustness_table$comp.pct), 0, 1, subdivisions = 1000)$value
+  
+  return(xx)
+}
+
+
+all_aucs <- sapply(hab_bc, get_auc)
+
+
+auc_df <- data.frame(kingdom = c(rep("Fungi", 3), rep("Bacteria", 3), rep("Interkingdom", 3)),
+                     habitat = c(rep(c("Stream", "Terrestrial", "Marine"),3)),
+                     robustness = all_aucs,
+                     network = letters[1:9])
+
+habitat_palette <- paletteer_d("ltc::ploen")[c(1,2,3)]
+
+pl <- ggplot(auc_df, aes(x = network, y = robustness, color = habitat, fill = kingdom)) +
+  geom_bar(stat = "identity", linewidth = 2) +
+  scale_color_manual(values = habitat_palette) +
+  scale_fill_manual(values = kingdom_palette)
+
+
+
+
+
+fung_bc_plot <- ggplot(fung_robustness, aes(x=removed.pct, y=comp.pct, color=habitat, group = habitat, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Fungi Top 918", linetype = "Type") +
+  scale_color_manual(values = habitat_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+
+bact_bc_plot <- ggplot(bact_robustness, aes(x=removed.pct, y=comp.pct, color=habitat, group = habitat, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Bacteria Top 918", linetype = "Type") +
+  theme(legend.key = element_rect(fill="white")) +
+  scale_color_manual(values = habitat_palette) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+cross_bc_plot <- ggplot(cross_robustness, aes(x=removed.pct, y=comp.pct, color=habitat, group = habitat, linetype = type)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Interkingdom 900", linetype = "Type") +
+  scale_color_manual(values = habitat_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+bb = fung_bc_plot + bact_bc_plot + cross_bc_plot
+
+```
+
+
+Gradient - top 721
+
+```{r}
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+take_top <- function (network, otu_table, number_to_take) {
+  taxa = V(network)$name
+  filt_otu <- otu_table[rownames(otu_table) %in% taxa,]
+  filt_otu <- filt_otu[,colSums(filt_otu)>0]
+  
+  otus <- data.frame(OTU = rownames(filt_otu),
+                     sum = rowSums(filt_otu))
+  
+  otus <- otus[order(otus$sum, decreasing=TRUE),]
+  
+  top_n <- otus[1:number_to_take,]
+  
+  tab <- otu_table[rownames(otu_table) %in% top_n$OTU,]
+  tab <- tab[,colSums(tab) > 0]
+  
+  return(tab)
+}
+ 
+
+fung_new_grad = lapply(fung_grad_igraphs, take_top, otu_table = fung_abun, number_to_take = 721)
+
+fung_top_n_grad <- lapply(fung_new_grad, function(x) as.data.frame(t(x)))
+
+
+remove_nodes <- function(network, top_taxa_table) {
+  all_nodes <- V(network)$name
+  
+  to_keep <- colnames(top_taxa_table)
+  
+  to_remove <- all_nodes[!(all_nodes %in% to_keep)]
+  
+  new_network <- delete_vertices(network, to_remove)
+  
+  return(new_network)
+}
+
+new_fung_igraphs_grad = mapply(remove_nodes,
+              network = fung_grad_igraphs,
+              top_taxa_table = fung_top_n_grad,
+              SIMPLIFY = FALSE)
+
+saveRDS(new_fung_igraphs_grad, "../intermediates/gradient/terrestrial/fung_downsamp721_igraphs.rds")
+
+# bact
+bact_new_grad = lapply(bact_grad_igraphs, take_top, otu_table = bact_abun, number_to_take = 721)
+
+bact_top_n_grad <- lapply(bact_new_grad, function(x) as.data.frame(t(x)))
+
+new_bact_igraphs_grad = mapply(remove_nodes,
+              network = bact_grad_igraphs,
+              top_taxa_table = bact_top_n_grad,
+              SIMPLIFY = FALSE)
+
+saveRDS(new_bact_igraphs_grad, "../intermediates/gradient/terrestrial/bact_downsamp721_igraphs.rds")
+
+
+# cross
+cross_filt <- function(cross_net, filt_fung_net, filt_bact_net) {
+  new_nodelist <- c(V(filt_fung_net)$name, V(filt_bact_net)$name)
+  
+  all_nodes <- V(cross_net)$name
+  
+  to_remove <- all_nodes[!(all_nodes %in% new_nodelist)]
+  
+  new_cross <- delete_vertices(cross_net, to_remove)
+  
+  return(new_cross)
+}
+
+new_cross_igraphs_grad <- list()
+for (i in 1:7){
+  new_cross_igraphs_grad[[i]] <- cross_filt(cross_grad_igraphs[[i]],
+                                       new_fung_igraphs_grad[[i]],
+                                       new_bact_igraphs_grad[[i]])
+}
+
+set.seed(134)
+equal_downsamp_cross_grad <- lapply(new_cross_igraphs_grad,
+                            function(x)
+                              induced.subgraph(x, sample(V(x)$name, size = 721)))
+
+saveRDS(equal_downsamp_cross_grad, "../intermediates/gradient/terrestrial/cross_downsamp721_igraphs.rds")
+
+lapply(equal_downsamp_cross_grad, gorder)
+
+
+
+grad_bc <- lapply(c(new_fung_igraphs_grad, new_bact_igraphs_grad, equal_downsamp_cross_grad), 
+                 function(x) myrobustness_bc(x, kingdom = "placeholder"))
+
+saveRDS(grad_bc, "../intermediates/gradient/grad_downsamp721_bc_knockouts.rds")
+
+fung_rob_grad <- grad_bc[1:7]
+bact_rob_grad <- grad_bc[8:14]
+cross_rob_grad <- grad_bc[15:21]
+
+prep_tbl <- function(list_of_robustness_tables,  kingdom) {
+  dat <- do.call("rbind", list_of_robustness_tables)
+  dat$kingdom = c(rep(kingdom, nrow(dat)))
+  
+  return(dat)
+}
+
+fung_robustness_grad <- prep_tbl(fung_rob_grad, "Fungi")
+bact_robustness_grad <- prep_tbl(bact_rob_grad, "Bacteria")
+cross_robustness_grad <- prep_tbl(cross_rob_grad, "Interkingdom")
+
+
+add_sitename <- function(robustness_table, n) {
+  robustness_table$site <- c(rep("Beach", n),
+                             rep("Estuary", n),
+                             rep("Entrance", n),
+                             rep("Confluence", n),
+                             rep("Waterfall", n),
+                             rep("DrumRoad", n),
+                             rep("Ridge", n))
+  return(robustness_table)
+}
+
+fung_robustness_grad <- add_sitename(fung_robustness_grad, 722)
+bact_robustness_grad <- add_sitename(bact_robustness_grad, 722)
+cross_robustness_grad <- add_sitename(cross_robustness_grad, 722)
+
+
+sitenames <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+
+
+fung_rob_by_site = lapply(sitenames, function(x) fung_robustness_grad[fung_robustness_grad$site==x,])
+bact_rob_by_site = lapply(sitenames, function(x) bact_robustness_grad[bact_robustness_grad$site==x,])
+cross_rob_by_site = lapply(sitenames, function(x) cross_robustness_grad[cross_robustness_grad$site==x,])
+
+king_rob_by_site <- list()
+
+for (i in 1:3) {
+  df = rbind(fung_rob_by_site[[i]], bact_rob_by_site[[i]], cross_rob_by_site[[i]])
+  king_rob_by_site[[i]] <- df
+}
+
+library(paletteer)
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+
+
+
+hm <- mapply(make_grad_plot_no_legend,
+             site_name = sitenames,
+             robust_table = king_rob_by_site,
+             SIMPLIFY = FALSE)
+
+
+grad_plot_for_legend <- ggplot(king_rob_by_site[[1]], aes(x=removed.pct, y=comp.pct, color=kingdom, group = kingdom)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", linetype = "Type") +
+   scale_color_manual(values = kingdom_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+library(cowplot)
+my_legend <- get_legend(grad_plot_for_legend)
+library(ggpubr)
+pp <- as_ggplot(my_legend)
+
+library(patchwork)
+
+grad_plots <- wrap_plots(hm) + pp + plot_layout(ncol = 4)
+
+
+
+get_auc <- function(robustness_table) {
+  xx = integrate(approxfun(robustness_table$removed.pct, robustness_table$comp.pct), 0, 1, subdivisions = 1000)$value
+  
+  return(xx)
+}
+
+
+all_aucs_grad <- sapply(grad_bc, get_auc)
+
+
+auc_df_grad <- data.frame(kingdom = c(rep("Fungi", 7), rep("Bacteria", 7), rep("Interkingdom", 7)),
+                     site = c(rep(sitenames,3)),
+                     robustness = all_aucs_grad,
+                     network = letters[1:21])
+
+#habitat_palette <- paletteer_d("ltc::ploen")[c(1,2,3)]
+
+pl_grad <- ggplot(auc_df_grad, aes(x = network, y = robustness, color = site, fill = kingdom)) +
+  geom_bar(stat = "identity", linewidth = 2) +
+  #scale_color_manual(values = habitat_palette) +
+  scale_fill_manual(values = kingdom_palette)
+
+
+
+
+
+fung_bc_plot_grad <- ggplot(fung_robustness_grad, aes(x=removed.pct, y=comp.pct, color=site, group = site)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Fungi Top 721", linetype = "Type") +
+  #scale_color_manual(values = habitat_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+
+bact_bc_plot_grad <- ggplot(bact_robustness_grad, aes(x=removed.pct, y=comp.pct, color=site, group = site)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Bacteria Top 721", linetype = "Type") +
+  theme(legend.key = element_rect(fill="white")) +
+  #scale_color_manual(values = habitat_palette) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+cross_bc_plot_grad <- ggplot(cross_robustness_grad, aes(x=removed.pct, y=comp.pct, color=site, group = site)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Interkingdom 721", linetype = "Type") +
+  #scale_color_manual(values = habitat_palette) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  #guides(color = "none") +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+king_grad_plots = fung_bc_plot_grad + bact_bc_plot_grad + cross_bc_plot_grad
+
+```
+
+

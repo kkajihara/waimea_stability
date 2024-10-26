@@ -1,0 +1,433 @@
+---
+title: "03_all_auc"
+output: html_document
+date: "2024-09-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(paletteer)
+library(patchwork)
+library(ggplot2)
+
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+habitat_palette <- c("#3F5671", "#83A1C3", "#B9D6B6")
+```
+
+
+# Watershed
+```{r}
+# full
+fung_ws_rob <- readRDS("../intermediates/new_knockouts/whole_fung_watershed_bc_knockouts.rds")
+bact_ws_rob <- readRDS("../intermediates/new_knockouts/whole_bact_watershed_bc_knockouts.rds")
+cross_ws_rob <- readRDS("../intermediates/new_knockouts/whole_cross_watershed_bc_knockouts.rds")
+
+
+get_auc <- function(robustness_table) {
+  xx = integrate(approxfun(robustness_table$removed.pct, robustness_table$comp.pct), 0, 1, subdivisions = 1000)$value
+  
+  return(xx)
+}
+
+
+ws_df_full <- data.frame(kingdom = c("Fungi", "Bacteria", "Interkingdom"),
+                    category = rep("Watershed", 3),
+                    robustness = sapply(list(fung_ws_rob, bact_ws_rob, cross_ws_rob), get_auc),
+                    network = c("b", "a", "c"),
+                    full_or_downsamp = rep("Full", 3))
+
+
+all_robustness <- readRDS("../intermediates/richtest_downsamp/watershed_downsamp721_bc_knockouts.rds")
+
+fung_ws_rob_down <- all_robustness[[1]]
+bact_ws_rob_down <- all_robustness[[2]]
+cross_ws_rob_down <- all_robustness[[3]]
+
+
+ws_df_down <- data.frame(kingdom = c("Fungi", "Bacteria", "Interkingdom"),
+                    category = rep("Watershed", 3),
+                    robustness = sapply(list(fung_ws_rob_down, bact_ws_rob_down, cross_ws_rob_down), get_auc),
+                    network = c("b", "a", "c"),
+                    full_or_downsamp = rep("Downsampled", 3))
+
+ws_all <- rbind(ws_df_full, ws_df_down)
+
+ws_pl <- ggplot(ws_all, aes(x = network, y = robustness, color = network, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10)) +
+  theme(legend.position = "none") +
+  labs(x = "Network", y = "Robustness") +
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+                         
+```
+
+
+# Habitat
+```{r}
+# stream, terrestrial, marine
+# inputs are lists of lists of 3 dfs
+fung_hab_robust <- readRDS("../intermediates/new_knockouts/fung_habitat_knockouts.rds")
+bact_hab_robust <- readRDS("../intermediates/new_knockouts/bact_habitat_knockouts.rds")
+cross_hab_robust <- readRDS("../intermediates/new_knockouts/cross_habitat_knockouts.rds")
+
+hab_tables_to_work_on <- list(fung_hab_robust[[1]][[1]], # stream
+                          fung_hab_robust[[1]][[2]], # terrestrial
+                          fung_hab_robust[[1]][[3]], # marine
+                          bact_hab_robust[[1]][[1]], # stream
+                          bact_hab_robust[[1]][[2]], # terrestrial
+                          bact_hab_robust[[1]][[3]], # marine
+                          cross_hab_robust[[1]][[1]], # stream
+                          cross_hab_robust[[1]][[2]], # terrestrial
+                          cross_hab_robust[[1]][[3]]  # marine
+                          )
+
+
+hab_auc <- lapply(hab_tables_to_work_on,
+                  get_auc)
+
+
+hab_auc_df <- data.frame(kingdom = c(rep("Fungi", 3), rep("Bacteria", 3), rep("Interkingdom", 3)),
+                         category = rep(c("Stream", "Terrestrial", "Marine"), 3),
+                         robustness = unlist(hab_auc),
+                         network = c("b","b","b","a","a","a","c","c","c"),
+                         full_or_downsamp = rep("Full", 9))
+
+## downsamp
+hab_bc <- readRDS("../intermediates/richtest_downsamp/hab_downsamp721_bc_knockouts.rds")
+
+hab_auc_down <- lapply(hab_bc,
+                  get_auc)
+
+
+hab_auc_df_down <- data.frame(kingdom = c(rep("Fungi", 3), rep("Bacteria", 3), rep("Interkingdom", 3)),
+                         category = rep(c("Stream", "Terrestrial", "Marine"), 3),
+                         robustness = unlist(hab_auc_down),
+                         network = c("b","b","b","a","a","a","c","c","c"),
+                         full_or_downsamp = rep("Downsampled", 9))
+
+all_hab_df <- rbind(hab_auc_df, hab_auc_df_down)
+
+
+str_hab_df <- all_hab_df[all_hab_df$category=="Stream",]
+
+str_hab_pl <- ggplot(str_hab_df, aes(x = network, y = robustness, color = network, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Stream") +
+  # scale_y_continuous(breaks = seq(0.27, 0.3, 0.01),
+  #                             limits = c(c(0.27, 0.3)))
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+ter_hab_df <- all_hab_df[all_hab_df$category=="Terrestrial",]
+
+ter_hab_pl <- ggplot(ter_hab_df, aes(x = network, y = robustness, color = network, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Terrestrial") +
+  # scale_y_continuous(breaks = seq(0.24, 0.3, 0.02),
+  #                             limits = c(c(0.24, 0.3)))
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+mar_hab_df <- all_hab_df[all_hab_df$category=="Marine",]
+
+mar_hab_pl <- ggplot(mar_hab_df, aes(x = network, y = robustness, color = network, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Marine") +
+  # scale_y_continuous(breaks = seq(0.08, 0.24, 0.04),
+  #                             limits = c(c(0.08, 0.24)))
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+fig2_aucs <- ws_pl + str_hab_pl + ter_hab_pl + mar_hab_pl + plot_layout(ncol = 2)
+
+ggsave("../figures/aug2024_revisions/watershedFULL_habitat_auc_scatter_same_yaxis_plusdownsampalpha.pdf", height = 4, width = 4)
+                         
+```
+
+```{r}
+
+all_hab_df_v2 <- all_hab_df
+all_hab_df_v2$network <- rep(c("a", "b", "c"), 6)
+
+fung_hab_df <- all_hab_df_v2[all_hab_df_v2$kingdom=="Fungi",]
+
+fung_hab_pl <- ggplot(fung_hab_df, aes(x = network, y = robustness, color = category, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Fungi") +
+   scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+bact_hab_df <- all_hab_df_v2[all_hab_df_v2$kingdom=="Bacteria",]
+
+bact_hab_pl <- ggplot(bact_hab_df, aes(x = network, y = robustness, color = category, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Bacteria") +
+   scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+cross_hab_df <- all_hab_df_v2[all_hab_df_v2$kingdom=="Interkingdom",]
+
+cross_hab_pl <- ggplot(cross_hab_df, aes(x = network, y = robustness, color = category, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(y = "Robustness", x = "Network", title = "Interkingdom") +
+   scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+
+# watershed as placeholder
+fig3_aucs <- ws_pl+ fung_hab_pl + bact_hab_pl + cross_hab_pl + plot_layout(ncol = 2)
+
+ggsave("../figures/aug2024_revisions/habitat_by_kingdom_auc_scatter_same_yaxis_withdownsampalpha.pdf", fig3_aucs, height = 4, width = 4)
+```
+
+
+# Gradient
+
+```{r}
+# robustness results from slurm
+fung_grad_robust <- readRDS("../intermediates/new_knockouts/fung_gradient_knockouts.rds")[[1]]
+bact_grad_robust <- readRDS("../intermediates/new_knockouts/bact_gradient_knockouts.rds")[[1]]
+cross_grad_robust <- readRDS("../intermediates/new_knockouts/cross_gradient_knockouts.rds")[[1]]
+
+
+# reorder from bottom to top of watershed
+fung_grad_robust <- fung_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+bact_grad_robust <- bact_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+cross_grad_robust <- cross_grad_robust[c(6, 5, 1, 2, 3, 4, 7)]
+
+
+fung_grad_auc <- lapply(fung_grad_robust, get_auc)
+bact_grad_auc <- lapply(bact_grad_robust, get_auc)
+cross_grad_auc <- lapply(cross_grad_robust, get_auc)
+
+#downsampled 
+grad_bc <- readRDS("../intermediates/gradient/grad_downsamp721_bc_knockouts.rds")
+
+grad_auc_down <- lapply(grad_bc,
+                  get_auc)
+
+
+fung_grad_auc_df_full <- data.frame(Robustness = unlist(fung_grad_auc),
+                          Network = letters[1:7],
+                          full_or_downsamp = rep("Full", 7))
+
+fung_grad_auc_df_down <- data.frame(Robustness = unlist(grad_auc_down)[1:7],
+                                    Network = letters[1:7],
+                          full_or_downsamp = rep("Downsampled", 7))
+
+fung_grad <- rbind(fung_grad_auc_df_full, fung_grad_auc_df_down)
+fung_grad$kingdom = "Fungi"
+
+fung_grad_pl <- ggplot(fung_grad, aes(x = Network, y = Robustness, color = Network, alpha = full_or_downsamp)) +
+  geom_point(size = 4) +
+  scale_color_manual(values = paletteer_d("MetBrewer::Monet")) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(title = "Fungi")  +
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+
+
+bact_grad_auc_df_full <- data.frame(Robustness = unlist(bact_grad_auc),
+                          Network = letters[1:7],
+                          full_or_downsamp = rep("Full", 7))
+
+bact_grad_auc_df_down <- data.frame(Robustness = unlist(grad_auc_down)[8:14],
+                                    Network = letters[1:7],
+                          full_or_downsamp = rep("Downsampled", 7))
+
+bact_grad <- rbind(bact_grad_auc_df_full, bact_grad_auc_df_down)
+bact_grad$kingdom <- "Bacteria"
+
+bact_grad_pl <- ggplot(bact_grad, aes(x = Network, y = Robustness, color = Network, alpha = full_or_downsamp)) +
+  geom_point(size = 4) +
+  scale_color_manual(values = paletteer_d("MetBrewer::Monet")) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(title = "Bacteria") +
+ scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+
+cross_grad_auc_df_full <- data.frame(Robustness = unlist(cross_grad_auc),
+                          Network = letters[1:7],
+                          full_or_downsamp = rep("Full", 7))
+
+cross_grad_auc_df_down <- data.frame(Robustness = unlist(grad_auc_down)[15:21],
+                                    Network = letters[1:7],
+                          full_or_downsamp = rep("Downsampled", 7))
+
+cross_grad <- rbind(cross_grad_auc_df_full, cross_grad_auc_df_down)
+cross_grad$kingdom <- "Interkingdom"
+
+cross_grad_pl <- ggplot(cross_grad, aes(x = Network, y = Robustness, color = Network, alpha = full_or_downsamp)) +
+  geom_point(size = 4) +
+  scale_color_manual(values = paletteer_d("MetBrewer::Monet")) +
+    scale_alpha_manual(values = c(0.3, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+  labs(title = "Interkingdom") +
+  scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+
+
+# watershed as placeholder
+grad_aucs <- ws_pl+ fung_grad_pl + bact_grad_pl + cross_grad_pl + plot_layout(ncol = 2)
+
+#ggsave("../figures/aug2024_revisions/gradient_by_kingdom_auc_scatter_withdownsampalpha.pdf", grad_aucs, height = 4, width = 4.5)
+
+
+
+## by site
+gradient_sites <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+
+all_grad <- rbind(fung_grad, bact_grad, cross_grad)
+all_grad$Network <- c(rep("a", 14), rep("b",14), rep("c",14))
+all_grad$site <- rep(gradient_sites, 6)
+
+all_grad$kingdom <- factor(all_grad$kingdom, levels = c("Fungi", "Bacteria", "Interkingdom"))
+
+dfs_by_site <- list()
+
+names(kingdom_palette) <- c("Bacteria", "Fungi", "Interkingdom", "x", "x")
+
+for(i in 1:length(gradient_sites)) {
+  my_df <- all_grad[all_grad$site==gradient_sites[i],]
+  
+  dfs_by_site[[i]] <- my_df
+}
+
+basic_plot <- function(df) {
+  pl <- ggplot(df, aes(x = kingdom, y = Robustness, color = kingdom, alpha = full_or_downsamp)) +
+  geom_point(size = 5) +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_text(color = "black", size = 10),
+        legend.position = "none") +
+    labs(y = "Robustness", x = "Network") +
+    scale_y_continuous(breaks = seq(0, 0.3, 0.1),
+                              limits = c(c(0, 0.3)))
+  
+  return(pl)
+}
+
+beach_plot <- basic_plot(dfs_by_site[[1]]) +
+  ggtitle("Beach") 
+
+estuary_plot <- basic_plot(dfs_by_site[[2]]) +
+  ggtitle("Estuary") 
+
+entrance_plot <- basic_plot(dfs_by_site[[3]]) +
+  ggtitle("Entrance")
+
+confluence_plot <- basic_plot(dfs_by_site[[4]]) +
+  ggtitle("Confluence") 
+
+waterfall_plot <- basic_plot(dfs_by_site[[5]]) +
+  ggtitle("Waterfall") 
+
+drumroad_plot <- basic_plot(dfs_by_site[[6]]) +
+  ggtitle("Drum Road")
+
+ridge_plot <- basic_plot(dfs_by_site[[7]]) +
+  ggtitle("Ridge") 
+
+library(patchwork)
+
+grad_plots_by_site <- beach_plot + estuary_plot + entrance_plot + confluence_plot +
+  waterfall_plot + drumroad_plot + ridge_plot + plot_layout(ncol = 4)
+
+ggsave("../figures/aug2024_revisions/FIXEDgrad_site_auc_scatter_withdownsampalpha.pdf", width = 8.5, height=4)
+```
+
+```{r}
+# all_auc_dat <- rbind(ws_df, hab_auc_df, grad_site_auc_df)
+# all_auc_dat <- all_auc_dat[,1:3]
+# 
+# saveRDS(all_auc_dat, "../intermediates/new_knockouts/all_auc_values.rds")
+```
+
+
+
+```{r}
+library(patchwork)
+
+aa = ws_pl + hab_pl + grad_pl + hostnon_pl + plot_layout(ncol = 2)
+
+ggsave("../figures/aug2024_revisions/robustness_scatterplots.pdf", aa, width = 9, height = 9)
+ggsave("../figures/aug2024_revisions/robustness_scatterplots.png", aa, width = 9, height = 9)
+```
+
