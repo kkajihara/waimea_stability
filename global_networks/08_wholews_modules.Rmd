@@ -1,0 +1,396 @@
+---
+title: "12_Modules"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+#library(phyloseq)
+library(patchwork)
+library(ggraph)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# read in data
+fung_net <- readRDS("../intermediates/global/weighted_full_fung_igraph.rds")
+fung_net <- delete.vertices(fung_net, "dummy")
+
+bact_net <- readRDS("../intermediates/global/weighted_full_bact_igraph.rds")
+bact_net <- delete.vertices(bact_net, "dummy")
+
+cross_net <- readRDS("../intermediates/global/weighted_full_cross_igraph.rds")
+cross_net <- delete.vertices(cross_net, "dummy")
+cross_net <- delete.vertices(cross_net, "dummy")
+```
+
+```{r}
+
+# import metadata
+fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+cross_data_names <- c(rownames(fung_abun),rownames(bact_abun))
+
+# modularity data
+fung_module_data <- readRDS("../intermediates/global/fung_netcarto_results.rds")[[1]]
+             
+bact_module_data <- readRDS("../intermediates/global/bact_netcarto_results.rds")[[1]]
+             
+cross_module_data <- readRDS("../intermediates/global/cross_netcarto_results.rds")[[1]]
+```
+
+## Fungi Modules
+
+```{r}
+
+# rename module 0 
+fung_module_data$module[fung_module_data$module==0] <- max(fung_module_data$module) + 1
+
+tt <- table(fung_module_data$module)
+
+df2 <- subset(fung_module_data, module %in% names(tt[tt < 10]))
+
+fung_module_data$new_module <- fung_module_data$module
+fung_module_data$new_module <- ifelse(fung_module_data$name %in% df2$name, 0, fung_module_data$new_module)
+
+fung_module_data$new_module <- factor(fung_module_data$new_module,labels=as.character(0:8))
+
+# unconnected nodes are not included in the netcarto output
+fung_missing_otus <- rownames(fung_abun)[!(rownames(fung_abun) %in% fung_module_data$name)]
+
+fung_new_df <- data.frame(fung_missing_otus,
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)),
+                     rep(0, length(fung_missing_otus)))
+names(fung_new_df) <- names(fung_module_data)
+
+all_fung_otu_mod <- rbind(fung_module_data, fung_new_df) # warning ok
+
+
+
+
+#gg_fung_network <- ggnetwork(asNetwork(fung_net), layout = "fruchtermanreingold")
+
+# for plotting purposes, only show modules with >10 nodes
+# sort(table(gg_fung_network$Module))
+# modules_to_remove <- c(1,5,6,7,11,14,16,17,18,23,24,25,9,10,13,8,3,15)
+# 
+# gg_fung_network$Module <- ifelse(gg_fung_network$Module %in% modules_to_remove,
+#                                  0,
+#                                  gg_fung_network$Module)
+# 
+# # rename modules largest to smallest
+# sort(table(gg_fung_network$Module))
+# gg_fung_network$Module[gg_fung_network$Module==19] <- 1
+# gg_fung_network$Module[gg_fung_network$Module==4] <- 3
+# gg_fung_network$Module[gg_fung_network$Module==26] <- 4
+# gg_fung_network$Module[gg_fung_network$Module==20] <- 5
+# gg_fung_network$Module[gg_fung_network$Module==22] <- 6
+# gg_fung_network$Module[gg_fung_network$Module==12] <- 7
+# gg_fung_network$Module[gg_fung_network$Module==27] <- 8
+# gg_fung_network$Module[gg_fung_network$Module==21] <- 9
+# 
+# 
+# 
+# gg_fung_network$Module <- factor(gg_fung_network$Module)
+
+V(fung_net)$Module <- all_fung_otu_mod$new_module[match(V(fung_net)$name, all_fung_otu_mod$name)]
+
+V(fung_net)$Module <- as.character(V(fung_net)$Module)
+V(fung_net)$Module <- factor(V(fung_net)$Module,
+                                 labels=as.character(0:8))
+
+library(paletteer)
+
+fung_pal_big <- c("#F2F3F4",
+              "#A10B2B",
+              "#B8B8FF",
+              "#d1bd19",
+              "#714841",
+              "#5C7287",
+              "#B5D1CC",
+              "#B08699",
+              "#D99E73",
+              "#FF616B",
+              "#EBD999",
+              "#0057BA",
+              "#96BFE6")
+
+fung_pal <- c("#F2F3F4",
+              "#A10B2B",
+              "#B8B8FF",
+              "#d1bd19",
+              "#714841",
+              "#5C7287",
+              "#B5D1CC",
+              "#B08699",
+              "#D99E73", # 9th one
+              "red", # negative edges
+              "deepskyblue4" # positive edges
+)
+
+set.seed(123)
+
+new_ggfung <- ggnetwork(asNetwork(fung_net), layout = "fruchtermanreingold")
+
+fung_gg <- ggplot(data = new_ggfung,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(aes(color = sign), linewidth=0.2, alpha = 0.3) +
+   geom_nodes(aes(colour = Module), size = 1.5, shape = 17) +
+   scale_colour_manual(values = fung_pal) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)))
+
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/fung_wholewsnet_modules_colored.png", fung_gg,
+       width=7, height=7.2)
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/fung_wholewsnet_modules_colored.pdf", fung_gg,
+       width=7, height=7.2)
+
+ 
+ 
+ 
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+
+
+ 
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+rownames(fung_meta) <- fung_meta$sequencing_id
+#fung_meta$trophic[!(fung_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+
+#hsize = 4
+
+make_pie <- function(module_num, ggnetwork_table, abun, meta, color_palette, var_to_filt_by, legend_title) {
+  fung_module_otus <- unique(ggnetwork_table$vertex.names[ggnetwork_table$Module==module_num])
+
+  filt_abun <- abun[rownames(abun) %in% fung_module_otus,]
+  filt_abun <- filt_abun[,colSums(filt_abun)>0]
+  
+  filt_sd <- meta[meta$x_seq_id %in% names(filt_abun),]
+  
+  df <- filt_sd %>% group_by_at(var_to_filt_by) %>% summarise(count=length(sequencing_id))
+  df$pct <- df$count/sum(df$count)
+
+  #df <- df %>% mutate(x = hsize)
+  
+  
+  my_plot <- ggplot(df, aes(x = 2, y = count, fill = factor(!!sym(var_to_filt_by), levels = names(color_palette)))) +
+                geom_bar(stat = "identity") +
+                coord_polar(theta = "y", start = 200) +
+                xlim(c(0.2, 2.5)) +
+                theme_blank() +
+                labs(title=paste("Module", module_num), fill=var_to_filt_by) +
+                scale_fill_manual(values=color_palette, drop=FALSE) +
+                labs(fill = legend_title)
+  
+  return(my_plot)
+}
+
+
+
+empo_pal <- paletteer_d("miscpalettes::pastel", 14)
+names(empo_pal) <- unique(fung_meta$empo_3)
+
+
+fung_module_pies_by_empo = lapply(1:8,
+                                  make_pie,
+                                  ggnetwork_table = new_ggfung,
+                                  abun = fung_abun,
+                                  meta = fung_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+library(ggpubr)
+fung_empo_pies <- ggarrange(plotlist = fung_module_pies_by_empo, ncol = 4, nrow = 2, common.legend = TRUE, legend = "bottom")
+
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/fung_module_empo_pies.pdf", width=14, height=10)
+
+
+```
+
+
+
+## Bacteria Modules
+
+```{r}
+
+
+bact_module_data$module[bact_module_data$module==0] <- max(bact_module_data$module) + 1
+
+V(bact_net)$Module <- bact_module_data$module[match(V(bact_net)$name, bact_module_data$name)]
+gg_bact_network <- ggnetwork(asNetwork(bact_net), layout = "fruchtermanreingold")
+gg_bact_network$Module <- factor(gg_bact_network$Module)
+
+
+library(paletteer)
+
+colrs <- paletteer_d("fishualize::Nemateleotris_magnifica")
+
+bact_colrs <- c(colrs[1:3], "red", "deepskyblue4")
+
+set.seed(123)
+bact_gg <- ggplot(data = gg_bact_network,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(aes(color = sign), linewidth=0.1, alpha = 0.3) +
+   geom_nodes(aes(colour = Module), size = 1) +
+   scale_colour_manual(values = bact_colrs) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)))
+
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/bact_wholewsnet_modules_colored.png", bact_gg,
+       width=9.5, height=7)
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/bact_wholewsnet_modules_colored.pdf", bact_gg,
+       width=9.5, height=7)
+ 
+
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+rownames(bact_meta) <- bact_meta$sequencing_id
+
+bact_module_pies_by_empo = lapply(1:3,
+                                  make_pie,
+                                  ggnetwork_table = gg_bact_network,
+                                  abun = bact_abun,
+                                  meta = bact_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+bact_empo_pies <- ggarrange(plotlist = bact_module_pies_by_empo, nrow =1, common.legend = TRUE, legend = "bottom")
+
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/bact_module_empo_pies.pdf", width=11, height=3)
+
+
+```
+
+
+## Cross domain Modules
+
+```{r}
+
+cross_module_data$module[cross_module_data$module==0] <- max(cross_module_data$module) + 1
+
+
+V(cross_net)$Module <- cross_module_data$module[match(V(cross_net)$name, cross_module_data$name)]
+
+ 
+gg_cross_network <- ggnetwork(asNetwork(cross_net), layout = "fruchtermanreingold")
+gg_cross_network$Domain <- ifelse(grepl("fung", gg_cross_network$vertex.names), "Fungi", "Bacteria")
+gg_cross_network$Module <- factor(gg_cross_network$Module)
+
+
+coolors <- c("#CC8B86",
+             "#7D4F50",
+             "#D1BE9C",
+             "red",
+             "deepskyblue4")
+
+set.seed(123)
+cross_gg <- ggplot(data = gg_cross_network,
+      aes(x, y, xend = xend, yend = yend)) +
+   geom_edges(aes(color = sign), linewidth=0.2, alpha = 0.3) +
+   geom_nodes(aes(colour = Module, shape = Domain), size = 2) +
+   scale_colour_manual(values = coolors) +
+   scale_shape_manual(values = c(19,17)) +
+   #xlim(c(-0.05, 1.05)) +
+   theme_blank() +
+   theme(legend.position = "bottom") +
+   theme(legend.text = element_text(size=14)) +
+   theme(legend.title = element_text(size=16)) +
+   guides(colour = guide_legend(override.aes = list(size=5)),
+          shape = guide_legend(override.aes = list(size=5)))
+ 
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/crossdom_wholewsnet_modules_colored.png", width=14, height=10)
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/crossdom_wholewsnet_modules_colored.pdf", width=14, height=10)
+ 
+ 
+# pie chart showing empo3 associations of each Module?
+# what are the asvs in each Module
+# what samples do these asvs show up in
+#fung_meta <- readRDS("../intermediates/fully_filtered_fungal_otu_metadata_matched_up.rds")
+
+cross_meta <- plyr::rbind.fill(fung_meta, bact_meta)
+
+make_pie_cross <- function(module_num, ggnetwork_table, fung_abun, bact_abun, fung_meta, bact_meta, color_palette, var_to_filt_by, legend_title) {
+  cross_module_otus <- unique(ggnetwork_table$vertex.names[ggnetwork_table$Module==module_num])
+  
+  filt_abun_fung <- fung_abun[rownames(fung_abun) %in% cross_module_otus,]
+  filt_abun_fung <- filt_abun_fung[,colSums(filt_abun_fung)>0]
+  
+  filt_meta_fung <- fung_meta[fung_meta$x_seq_id %in% names(filt_abun_fung),]
+  
+  filt_abun_bact <- bact_abun[rownames(bact_abun) %in% cross_module_otus,]
+  filt_abun_bact <- filt_abun_bact[,colSums(filt_abun_bact)>0]
+  
+  filt_meta_bact <- bact_meta[bact_meta$x_seq_id %in% names(filt_abun_bact),]
+  
+  all_meta <- plyr::rbind.fill(filt_meta_fung, filt_meta_bact)
+  all_meta$trophic[!(all_meta$trophic %in% c("PrimaryProducer", "Environmental"))] <- "Consumer"
+
+  
+  #node_names <- c(rownames(filt_abun_fung), rownames(filt_abun_bact))
+  
+  df <- all_meta %>% dplyr::group_by_at(var_to_filt_by) %>% dplyr::summarise(count=length(x_seq_id))
+  df$pct <- df$count/sum(df$count)
+
+  my_plot <- ggplot(df, aes(x = 2, y = count, fill = factor(!!sym(var_to_filt_by), levels = names(color_palette)))) +
+                geom_bar(stat = "identity") +
+                coord_polar(theta = "y", start = 200) +
+                xlim(c(0.2, 2.5)) +
+                theme_blank() +
+                labs(title=paste("Module", module_num), fill=var_to_filt_by) +
+                scale_fill_manual(values=color_palette, drop=FALSE) +
+                labs(fill = legend_title)
+  return(my_plot)
+}
+
+
+
+cross_module_pies_by_empo = lapply(1:3,
+                                  make_pie_cross,
+                                  ggnetwork_table = gg_cross_network,
+                                  fung_abun = fung_abun,
+                                  fung_meta = fung_meta,
+                                  bact_abun = bact_abun,
+                                  bact_meta = bact_meta,
+                                  color_palette = empo_pal,
+                                  var_to_filt_by = "empo_3",
+                                  legend_title = "Sample Type")
+
+cross_empo_pies <- ggarrange(plotlist = cross_module_pies_by_empo, nrow = 1, common.legend = TRUE, legend = "bottom")
+
+ggsave("../figures/aug2024_revisions/whole_watershed_viz/crossdom_module_empo_pies.pdf", width=11, height=3)
+
+
+```
+
+
+

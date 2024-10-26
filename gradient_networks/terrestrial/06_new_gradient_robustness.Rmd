@@ -1,0 +1,323 @@
+---
+title: "05_gradient_robustness"
+output: html_document
+date: "2023-06-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=F}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(brainGraph)
+library(patchwork)
+library(network)
+library(SpiecEasi)
+
+library(dplyr)
+library(tibble)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+habitat_palette <- c("#3F5671", "#83A1C3", "#B9D6B6")
+
+```
+
+```{r}
+# entrance, confluence, waterfall, drumroad, estuary, beach, ridge
+
+# robustness results from slurm
+fung_robustness <- readRDS("../../intermediates/new_knockouts/fung_gradient_knockouts.rds")
+bact_robustness <- readRDS("../../intermediates/new_knockouts/bact_gradient_knockouts.rds")
+cross_robustness <- readRDS("../../intermediates/new_knockouts/cross_gradient_knockouts.rds")
+
+add_fulldownsamp_column <- function(df, string) {
+  df$full_or_downsamp <- string
+  return(df)
+}
+
+fung_robustness <- lapply(fung_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+bact_robustness <- lapply(bact_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+cross_robustness <- lapply(cross_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+
+
+# downsampled network robustness results
+grad_bc <- readRDS("../../intermediates/gradient/grad_downsamp721_bc_knockouts.rds")
+grad_bc <- lapply(grad_bc, add_fulldownsamp_column, "Downsampled")
+
+for (i in 1:7) {
+  grad_bc[[i]]$kingdom <- "Fungi"
+}
+
+for (i in 8:14) {
+  grad_bc[[i]]$kingdom <- "Bacteria"
+}
+
+for (i in 15:21) {
+  grad_bc[[i]]$kingdom <- "Interkingdom"
+}
+
+
+```
+
+
+```{r}
+fung_bc_rob <- fung_robustness[[1]]
+fung_invbc_rob <- fung_robustness[[2]]
+fung_random_rob <- fung_robustness[[3]]
+
+bact_bc_rob <- bact_robustness[[1]]
+bact_invbc_rob <- bact_robustness[[2]]
+bact_random_rob <- bact_robustness[[3]]
+
+cross_bc_rob <- cross_robustness[[1]]
+cross_invbc_rob <- cross_robustness[[2]]
+cross_random_rob <- cross_robustness[[3]]
+
+
+
+# entrance, confluence, waterfall, drumroad, estuary, beach, ridge is out of order
+gradient_sites <- c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge")
+
+
+all_entrance <- rbind(fung_bc_rob[[1]], fung_invbc_rob[[1]], fung_random_rob[[1]],
+                        bact_bc_rob[[1]], bact_invbc_rob[[1]], bact_random_rob[[1]],
+                        cross_bc_rob[[1]], cross_invbc_rob[[1]], cross_random_rob[[1]],
+                    grad_bc[[3]], grad_bc[[10]], grad_bc[[17]]
+                        )
+all_entrance$site <- rep("Entrance", nrow(all_entrance))
+
+
+all_confluence <- rbind(fung_bc_rob[[2]], fung_invbc_rob[[2]], fung_random_rob[[2]],
+                        bact_bc_rob[[2]], bact_invbc_rob[[2]], bact_random_rob[[2]],
+                        cross_bc_rob[[2]], cross_invbc_rob[[2]], cross_random_rob[[2]],
+                    grad_bc[[4]], grad_bc[[11]], grad_bc[[18]]
+                        )
+all_confluence$site <- rep("Confluence", nrow(all_confluence))
+
+
+all_waterfall <- rbind(fung_bc_rob[[3]], fung_invbc_rob[[3]], fung_random_rob[[3]],
+                        bact_bc_rob[[3]], bact_invbc_rob[[3]], bact_random_rob[[3]],
+                        cross_bc_rob[[3]], cross_invbc_rob[[3]], cross_random_rob[[3]],
+                    grad_bc[[5]], grad_bc[[12]], grad_bc[[19]]
+                        )
+all_waterfall$site <- rep("Waterfall", nrow(all_waterfall))
+
+
+all_drumroad <- rbind(fung_bc_rob[[4]], fung_invbc_rob[[4]], fung_random_rob[[4]],
+                        bact_bc_rob[[4]], bact_invbc_rob[[4]], bact_random_rob[[4]],
+                        cross_bc_rob[[4]], cross_invbc_rob[[4]], cross_random_rob[[4]],
+                    grad_bc[[6]], grad_bc[[13]], grad_bc[[20]]
+                        )
+all_drumroad$site <- rep("DrumRoad", nrow(all_drumroad))
+
+
+all_estuary <- rbind(fung_bc_rob[[5]], fung_invbc_rob[[5]], fung_random_rob[[5]],
+                        bact_bc_rob[[5]], bact_invbc_rob[[5]], bact_random_rob[[5]],
+                        cross_bc_rob[[5]], cross_invbc_rob[[5]], cross_random_rob[[5]],
+                    grad_bc[[2]], grad_bc[[9]], grad_bc[[16]]
+                        )
+all_estuary$site <- rep("Estuary", nrow(all_estuary))
+
+
+all_beach <- rbind(fung_bc_rob[[6]], fung_invbc_rob[[6]], fung_random_rob[[6]],
+                        bact_bc_rob[[6]], bact_invbc_rob[[6]], bact_random_rob[[6]],
+                        cross_bc_rob[[6]], cross_invbc_rob[[6]], cross_random_rob[[6]],
+                    grad_bc[[1]], grad_bc[[8]], grad_bc[[15]]
+                        )
+all_beach$site <- rep("Beach", nrow(all_beach))
+
+
+all_ridge <- rbind(fung_bc_rob[[7]], fung_invbc_rob[[7]], fung_random_rob[[7]],
+                        bact_bc_rob[[7]], bact_invbc_rob[[7]], bact_random_rob[[7]],
+                        cross_bc_rob[[7]], cross_invbc_rob[[7]], cross_random_rob[[7]],
+                    grad_bc[[7]], grad_bc[[14]], grad_bc[[21]]
+                        )
+all_ridge$site <- rep("Ridge", nrow(all_ridge))
+
+```
+
+```{r}
+make_plot <- function(long_table, my_title) {
+  my_plot <- ggplot(long_table, aes(x=removed.pct, y=comp.pct, color=kingdom, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", title = my_title, linetype = "Type") +
+  scale_color_manual(values = kingdom_palette) +
+    scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = "none", linetype = "none", alpha = "none") +
+      scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+  
+  return(my_plot)
+}
+
+# entrance, confluence, waterfall, drumroad, estuary, beach, ridge
+beach_plot <- make_plot(all_beach, "Beach")
+estuary_plot <- make_plot(all_estuary, "Estuary")
+entrance_plot <- make_plot(all_entrance, "Entrance")
+#confluence_plot <- make_plot(all_confluence, "Confluence")
+waterfall_plot <- make_plot(all_waterfall, "Waterfall")
+drumroad_plot <- make_plot(all_drumroad, "DrumRoad")
+ridge_plot <- make_plot(all_ridge, "Ridge")
+
+
+confluence_plot <- ggplot(all_confluence, aes(x=removed.pct, y=comp.pct, color=kingdom, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", title = "Confluence", linetype = "Type") +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+library(patchwork)
+all_grad <- beach_plot + estuary_plot + entrance_plot + confluence_plot + waterfall_plot +
+  drumroad_plot + ridge_plot + plot_layout(ncol = 4)
+
+ggsave("../../figures/aug2024_revisions/FIXEDgradient_robust_by_gradient_withdownsampalpha.pdf", all_grad, width = 24, height = 11)
+ggsave("../../figures/aug2024_revisions/FIXEDgradient_robust_by_gradient_withdownsampalpha.png", all_grad, width = 24, height = 11)
+
+```
+
+By Kingdom
+```{r}
+subset_kingdom <- function(table, kingdom_string) {
+  my_df <- table[table$kingdom == kingdom_string,]
+  my_df$site <- factor(my_df$site, levels=c("Beach", "Estuary", "Entrance", "Confluence", "Waterfall", "DrumRoad", "Ridge"))
+  return(my_df)
+}
+
+list_of_tbls <- list(all_beach, all_estuary, all_entrance, all_confluence, all_waterfall, all_drumroad, all_ridge)
+
+all_fung_tbls <- lapply(list_of_tbls, 
+                        subset_kingdom,
+                        "Fungi")
+
+all_fung_dat <- do.call("rbind", all_fung_tbls)
+
+
+all_bact_tbls <- lapply(list_of_tbls, 
+                        subset_kingdom,
+                        "Bacteria")
+
+all_bact_dat <- do.call("rbind", all_bact_tbls)
+
+
+all_cross_tbls <- lapply(list_of_tbls, 
+                        subset_kingdom,
+                        "Interkingdom")
+
+all_cross_dat <- do.call("rbind", all_cross_tbls)
+
+
+```
+
+```{r}
+make_plot_by_kingdom <- function(long_table, my_title) {
+  my_plot <- ggplot(long_table, aes(x=removed.pct, y=comp.pct, color=site, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  scale_color_manual(values = paletteer_d("MetBrewer::Monet")) +
+    scale_alpha_manual(values = c(0.3, 1)) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = my_title, linetype = "Type") +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = "none", linetype = "none", alpha = "none") +
+      scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+  
+  return(my_plot)
+}
+
+
+# entrance, confluence, waterfall, drumroad, estuary, beach, ridge
+fung_king_plot <- make_plot_by_kingdom(all_fung_dat, "Fungi")
+
+bact_king_plot <- make_plot_by_kingdom(all_bact_dat, "Bacteria")
+
+
+cross_king_plot <- ggplot(all_cross_dat, aes(x=removed.pct, y=comp.pct, color=site, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", title = "Interkingdom", linetype = "Type") +
+  scale_color_manual(values = paletteer_d("MetBrewer::Monet")) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+library(patchwork)
+
+all_king <- fung_king_plot + bact_king_plot + cross_king_plot
+
+ggsave("../../figures/aug2024_revisions/gradient_robust_by_kingdom_withdownsampalpha.pdf", all_king, width = 18, height = 5.5)
+ggsave("../../figures/aug2024_revisions/gradient_robust_by_kingdom_withdownsampalpha.png", all_king, width = 18, height = 5.5)
+```
+
+
+

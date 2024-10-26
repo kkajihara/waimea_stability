@@ -1,0 +1,121 @@
+---
+title: "13_downsample_test"
+output: html_document
+date: "2023-07-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=F}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(brainGraph)
+library(patchwork)
+library(network)
+
+library(dplyr)
+library(tibble)
+library(reshape2)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+fung_bc_rob <- readRDS("../intermediates/new_knockouts/whole_fung_watershed_bc_knockouts.rds")
+fung_bc_rob$kingdom = "Fungi"
+
+fung_invbc_rob <- readRDS("../intermediates/new_knockouts/whole_fung_watershed_invbc_knockouts.rds")
+fung_invbc_rob$kingdom = "Fungi"
+
+fung_random_rob <- readRDS("../intermediates/new_knockouts/whole_fung_watershed_random_knockouts.rds")
+fung_random_rob$kingdom = "Fungi"
+
+
+bact_bc_rob <- readRDS("../intermediates/new_knockouts/whole_bact_watershed_bc_knockouts.rds")
+bact_bc_rob$kingdom = "Bacteria"
+
+bact_invbc_rob <- readRDS("../intermediates/new_knockouts/whole_bact_watershed_invbc_knockouts.rds")
+bact_invbc_rob$kingdom = "Bacteria"
+
+bact_random_rob <- readRDS("../intermediates/new_knockouts/whole_bact_watershed_random_knockouts.rds")
+bact_random_rob$kingdom = "Bacteria"
+
+
+
+cross_bc_rob <- readRDS("../intermediates/new_knockouts/whole_cross_watershed_bc_knockouts.rds")
+
+cross_invbc_rob <- readRDS("../intermediates/new_knockouts/whole_cross_watershed_invbc_knockouts.rds")
+
+cross_random_rob <- readRDS("../intermediates/new_knockouts/whole_cross_watershed_random_knockouts.rds")
+
+
+
+## bring in downsampled
+fung_down <- readRDS("../intermediates/richtest_downsamp/watershed_downsamp721_bc_knockouts.rds")[[1]]
+fung_down$kingdom <- "Fungi"
+
+bact_down <- readRDS("../intermediates/richtest_downsamp/watershed_downsamp721_bc_knockouts.rds")[[2]]
+bact_down$kingdom <- "Bacteria"
+
+cross_down <- readRDS("../intermediates/richtest_downsamp/watershed_downsamp721_bc_knockouts.rds")[[3]]
+cross_down$kingdom <- "Interkingdom"
+
+ws_down <- rbind(fung_down, bact_down, cross_down)
+ws_down$full_or_downsamp <- "Downsampled"
+
+reg_robustness <- rbind(fung_bc_rob, fung_invbc_rob, fung_random_rob,
+                        bact_bc_rob, bact_invbc_rob, bact_random_rob,
+                        cross_bc_rob, cross_invbc_rob, cross_random_rob)
+reg_robustness$full_or_downsamp <- "Full"
+
+
+all_robustness <- rbind(ws_down, reg_robustness)
+```
+
+
+```{r}
+
+library(paletteer)
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+
+
+bc_plot <- ggplot(all_robustness, aes(x=removed.pct, y=comp.pct, color=kingdom, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Whole Watershed - Full networks") +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.5, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size = 12, color = "black"),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = guide_legend(override.aes = list(size=6))) +
+  scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+saveRDS(bc_plot, "../intermediates/new_knockouts/wholews_robust_ggplot.rds")
+
+ggsave("../figures/aug2024_revisions/full_watershed_robust_by_kingdom.pdf", bc_plot, width = 8, height = 6.4)
+# ggsave("../figures/aug2024_revisions/full_watershed_robust_by_kingdom.png", bc_plot, width = 10, height = 7)
+
+
+```
+
+
+
+
+

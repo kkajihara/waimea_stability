@@ -1,0 +1,376 @@
+---
+title: "11_funguild_checks"
+output: html_document
+date: "2024-04-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, echo=FALSE}
+library(igraph)
+```
+
+Goal: look at the fungi taking part in negative interactions (check interkingdom) and see if they are more likely to be parasitic or pathogens in funguild
+
+```{r, echo = FALSE, results = "hide"}
+filt_cross_net <- readRDS("../intermediates/global/weighted_filt_cross_net.rds")
+
+filt_cross_net <- delete_vertices(filt_cross_net, "dummy")
+
+filt_bact_net <- readRDS("../intermediates/global/weighted_filt_bact_net.rds")
+
+filt_bact_net <- delete_vertices(filt_bact_net, "dummy")
+
+fung_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+bact_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+
+funguilds <- readRDS("../intermediates/gradient/terrestrial/funguild_assignments.rds")
+```
+
+```{r, echo=FALSE, results = "hide"}
+# code chunk from 05a_downsample_modularity.Rmd
+filt_cross_net
+
+x = igraph::as_data_frame(filt_cross_net)[, ]
+
+fung_bact <- x[substr(x$from, 1, 3)!=substr(x$to, 1, 3),]
+
+fb_neg <- fung_bact[fung_bact$sign=="negative",]
+
+fb_fung_neg <- unique(fb_neg$from)
+
+fbn <- data.frame(my_otu = fb_fung_neg)
+
+fbn$taxonomy <- funguilds$Taxonomy[match(fbn$my_otu, funguilds$OTU)]
+fbn$taxlevel <- funguilds$taxon[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_trophicMode <- funguilds$trophicMode[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_guild <- funguilds$guild[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_conf <- funguilds$confidenceRanking[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_growthform <- funguilds$growthForm[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_trait <- funguilds$trait[match(fbn$my_otu, funguilds$OTU)]
+fbn$fung_notes <- funguilds$notes[match(fbn$my_otu, funguilds$OTU)]
+
+fb_neg_assigned <- fbn[!is.na(fbn$taxlevel),]
+
+#table(fb_neg_assigned$fung_trophicMode)/nrow(fb_neg_assigned)
+table(fb_neg_assigned$fung_trophicMode)/length(fb_fung_neg)
+
+# what proportion of fungal nodes could be assigned guild
+dim(fb_neg_assigned)[1] / dim(fbn)[1]
+
+
+fb_pos <- fung_bact[fung_bact$sign=="positive",]
+
+fb_fung_pos <- unique(fb_pos$from)
+
+fbp <- data.frame(my_otu = fb_fung_pos)
+
+fbp$taxonomy <- funguilds$Taxonomy[match(fbp$my_otu, funguilds$OTU)]
+fbp$taxlevel <- funguilds$taxon[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_trophicMode <- funguilds$trophicMode[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_guild <- funguilds$guild[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_conf <- funguilds$confidenceRanking[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_growthform <- funguilds$growthForm[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_trait <- funguilds$trait[match(fbp$my_otu, funguilds$OTU)]
+fbp$fung_notes <- funguilds$notes[match(fbp$my_otu, funguilds$OTU)]
+
+fb_pos_assigned <- fbp[!is.na(fbp$taxlevel),]
+
+#table(fb_pos_assigned$fung_trophicMode)/nrow(fb_pos_assigned)
+table(fb_pos_assigned$fung_trophicMode)/length(fb_fung_pos)
+
+# what proportion of fungal nodes could be assigned guild
+dim(fb_pos_assigned)[1] / dim(fbp)[1]
+
+
+
+## fungal-fungal edges
+fung_only <- x[grepl("fung", x$from) & grepl("fung", x$to),]
+
+fonly_neg <- fung_only[fung_only$sign=="negative",]
+
+fonly_fung_neg <- unique(c(fonly_neg$from, fonly_neg$to))
+
+fneg <- data.frame(my_otu = fonly_fung_neg)
+
+fneg$taxonomy <- funguilds$Taxonomy[match(fneg$my_otu, funguilds$OTU)]
+fneg$taxlevel <- funguilds$taxon[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_trophicMode <- funguilds$trophicMode[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_guild <- funguilds$guild[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_conf <- funguilds$confidenceRanking[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_growthform <- funguilds$growthForm[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_trait <- funguilds$trait[match(fneg$my_otu, funguilds$OTU)]
+fneg$fung_notes <- funguilds$notes[match(fneg$my_otu, funguilds$OTU)]
+
+fonly_neg_assigned <- fneg[!is.na(fneg$taxlevel),]
+
+table(fonly_neg_assigned$fung_trophicMode)/nrow(fonly_neg_assigned)
+table(fonly_neg_assigned$fung_trophicMode)/nrow(fonly_neg)
+
+# what proportion of fungal nodes could be assigned guild
+dim(fonly_neg_assigned)[1] / dim(fneg)[1]
+
+
+
+fonly_pos <- fung_only[fung_only$sign=="positive",]
+
+fonly_fung_pos <- unique(c(fonly_pos$from, fonly_pos$to))
+
+fpos <- data.frame(my_otu = fonly_fung_pos)
+
+fpos$taxonomy <- funguilds$Taxonomy[match(fpos$my_otu, funguilds$OTU)]
+fpos$taxlevel <- funguilds$taxon[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_trophicMode <- funguilds$trophicMode[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_guild <- funguilds$guild[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_conf <- funguilds$confidenceRanking[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_growthform <- funguilds$growthForm[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_trait <- funguilds$trait[match(fpos$my_otu, funguilds$OTU)]
+fpos$fung_notes <- funguilds$notes[match(fpos$my_otu, funguilds$OTU)]
+
+fonly_pos_assigned <- fpos[!is.na(fpos$taxlevel),]
+
+table(fonly_pos_assigned$fung_trophicMode)/nrow(fonly_pos_assigned)
+table(fonly_pos_assigned$fung_trophicMode)/nrow(fonly_pos)
+
+# what proportion of fungal nodes could be assigned guild
+dim(fonly_pos_assigned)[1] / dim(fbp)[1]
+
+```
+
+```{r}
+fung_tax <- readRDS("../intermediates/global/fung_seed_taxonomy.rds")
+
+fung_new_tax <- data.frame("OTU ID" = fung_tax$denovo_OTU)
+names(fung_new_tax) <- "OTU ID"
+
+fung_new_tax$Kingdom <- paste0("k__", fung_tax$Kingdom)
+fung_new_tax$Phylum <- paste0("p__", fung_tax$Phylum)
+fung_new_tax$Class <- paste0("c__", fung_tax$Class)
+fung_new_tax$Order <- paste0("o__", fung_tax$Order)
+fung_new_tax$Family <- paste0("f__", fung_tax$Family)
+fung_new_tax$Genus <- paste0("g__", fung_tax$Genus)
+fung_new_tax$Species <- paste0("s__", fung_tax$Species)
+
+
+fung_new_tax$paste_tax <- paste(fung_new_tax$Kingdom, fung_new_tax$Phylum, fung_new_tax$Class, fung_new_tax$Order, fung_new_tax$Family, fung_new_tax$Genus, fung_new_tax$Species, sep=";")
+
+
+bact_tax <- readRDS("../intermediates/global/bact_seed_taxonomy.rds")
+
+bact_new_tax <- data.frame("OTU ID" = bact_tax$denovo_OTU)
+names(bact_new_tax) <- "OTU ID"
+
+bact_new_tax$Kingdom <- paste0("k__", bact_tax$Kingdom)
+bact_new_tax$Phylum <- paste0("p__", bact_tax$Phylum)
+bact_new_tax$Class <- paste0("c__", bact_tax$Class)
+bact_new_tax$Order <- paste0("o__", bact_tax$Order)
+bact_new_tax$Family <- paste0("f__", bact_tax$Family)
+bact_new_tax$Genus <- paste0("g__", bact_tax$Genus)
+bact_new_tax$Species <- paste0("s__", bact_tax$Species)
+
+
+bact_new_tax$paste_tax <- paste(bact_new_tax$Kingdom, bact_new_tax$Phylum, bact_new_tax$Class, bact_new_tax$Order, bact_new_tax$Family, bact_new_tax$Genus, bact_new_tax$Species, sep=";")
+```
+
+```{r}
+fung_genus_assigned <- fung_new_tax[!grepl("NA", fung_new_tax$Genus),]
+
+bact_genus_assigned <- bact_new_tax[!grepl("ceae", bact_new_tax$Genus),]
+bact_genus_assigned <- bact_genus_assigned[!grepl("unclassified", bact_genus_assigned$Genus),]
+bact_genus_assigned <- bact_genus_assigned[!grepl("uncultured", bact_genus_assigned$Genus),]
+
+cand_alb$tax <- ifelse(grepl("fung", cand_alb$to), 
+                       fung_new_tax$paste_tax[match(cand_alb$to, fung_new_tax$`OTU ID`)],
+                       bact_new_tax$paste_tax[match(cand_alb$to, bact_new_tax$`OTU ID`)])
+
+allnodes <- unique(c(x$from, x$to))
+
+all_fung <- allnodes[grepl("fung", allnodes)]
+all_bact <- allnodes[grepl("bact", allnodes)]
+
+fung_keep <- all_fung[all_fung %in% fung_genus_assigned$`OTU ID`]
+
+bact_bact <- x[(grepl("bact", x$from) & grepl("bact", x$to)),]
+
+```
+
+
+
+```{r}
+no_fam_fonlyneg <- fonly_neg_assigned[!(grepl("ceae", fonly_neg_assigned$taxonomy)),]
+
+no_fam_fbneg <- fb_neg_assigned[!(grepl("ceae", fb_neg_assigned$taxonomy)),]
+
+# candida albicans
+candida_alb <- x[x$from=="fung_otu23168",]
+candida_alb2 <- x[x$to=="fung_otu23168",]
+candida_alb2$to <- candida_alb2$from
+candida_alb2$from <- "fung_otu23168"
+
+cand_alb <- rbind(candida_alb, candida_alb2)
+
+cand_alb$tax <- ifelse(grepl("fung", cand_alb$to), fung_new_tax$paste_tax[match(cand_alb$to, fung_new_tax$`OTU ID`)], bact_new_tax$paste_tax[match(cand_alb$to, bact_new_tax$`OTU ID`)])
+
+# fusidium
+fus <- x[x$from=="fung_otu5766",]
+fus2 <- x[x$to=="fung_otu5766",]
+fus2$to <- fus2$from
+fus2$from <- "fung_otu5766"
+
+fusidium <- rbind(fus, fus2)
+fusidium$tax <- ifelse(grepl("fung", fusidium$to), fung_new_tax$paste_tax[match(fusidium$to, fung_new_tax$`OTU ID`)], bact_new_tax$paste_tax[match(fusidium$to, bact_new_tax$`OTU ID`)])
+
+
+# Phialemoniopsis pluriloculosa
+plu <- x[x$from %in% c("fung_otu8550", "fung_otu26250", "fung_otu13241"),]
+plu2 <- x[x$to %in% c("fung_otu8550", "fung_otu26250", "fung_otu13241"),]
+plu2$to <- plu2$from
+
+plurilo <- rbind(plu, plu2)
+plurilo$tax <- ifelse(grepl("fung", plurilo$to), fung_new_tax$paste_tax[match(plurilo$to, fung_new_tax$`OTU ID`)], bact_new_tax$paste_tax[match(plurilo$to, bact_new_tax$`OTU ID`)])  
+
+# acremonium 
+aa <- no_fam_fonlyneg$my_otu[grepl("Acremonium", no_fam_fonlyneg$taxlevel)]
+acr <- x[x$from %in% aa,]
+acr2 <- x[x$to %in% aa,]
+acr2$from <- "fung_otu18257"
+
+acremon <- rbind(acr, acr2)
+acremon$tax <- ifelse(grepl("fung", acremon$to), 
+                      fung_new_tax$paste_tax[match(acremon$to, fung_new_tax$`OTU ID`)],
+                      bact_new_tax$paste_tax[match(acremon$to, bact_new_tax$`OTU ID`)])  
+
+acremon$tax[grepl("Asper", acremon$tax)]
+
+# tolypocladium 
+tp <- funguilds$OTU[grepl("Tolypocladium", funguilds$Taxonomy)]
+tol <- x[x$from %in% tp,]
+tol2 <- x[x$to %in% tp,]
+tol2$from <- "fung_otu12042"
+
+tolypo <- rbind(tol, tol2)
+tolypo$tax <- ifelse(grepl("fung", tolypo$to), 
+                      fung_new_tax$paste_tax[match(tolypo$to, fung_new_tax$`OTU ID`)],
+                      bact_new_tax$paste_tax[match(tolypo$to, bact_new_tax$`OTU ID`)])  
+
+tolypo$tax[grepl("Elaph", tolypo$tax)]
+
+
+# trichoderma 
+td <- funguilds$OTU[grepl("Trichoderma", funguilds$Taxonomy)]
+tri <- x[x$from %in% td,]
+tri2 <- x[x$to %in% td,]
+tri2$from <- "fung_otu12042"
+
+tricho <- rbind(tri, tri2)
+tricho$tax <- ifelse(grepl("fung", tricho$to), 
+                      fung_new_tax$paste_tax[match(tricho$to, fung_new_tax$`OTU ID`)],
+                      bact_new_tax$paste_tax[match(tricho$to, bact_new_tax$`OTU ID`)])  
+
+tricho$tax[grepl("Elaph", tricho$tax)]
+
+# weissella 
+ws <- bact_new_tax$`OTU ID`[grepl("Weissella", bact_new_tax$paste_tax)]
+wei <- x[x$from %in% ws,]
+wei2 <- x[x$to %in% ws,]
+wei2$from <- "bact_otu43197"
+
+weiss <- rbind(wei, wei2)
+weiss$tax <- ifelse(grepl("fung", weiss$to), 
+                      fung_new_tax$paste_tax[match(weiss$to, fung_new_tax$`OTU ID`)],
+                      bact_new_tax$paste_tax[match(weiss$to, bact_new_tax$`OTU ID`)])  
+
+weiss$tax[grepl("Elaph", weiss$tax)]
+
+# streptococcus 
+y = igraph::as_data_frame(filt_bact_net)
+
+sc <- bact_new_tax$`OTU ID`[grepl("Streptococcus", bact_new_tax$paste_tax)]
+str <- y[y$from %in% sc,]
+str2 <- y[y$to %in% sc,]
+str2$from <- "bact_otu12182"
+
+strep <- rbind(str, str2)
+strep$tax <- ifelse(grepl("fung", strep$to), 
+                      fung_new_tax$paste_tax[match(strep$to, fung_new_tax$`OTU ID`)],
+                      bact_new_tax$paste_tax[match(strep$to, bact_new_tax$`OTU ID`)])  
+
+strep$tax[grepl("Elaph", strep$tax)]
+```
+
+
+### Sample data table: Fungal guild assignments for fungal nodes participating in negative fungal-bacterial edges
+
+```{r, echo=FALSE}
+rmarkdown::paged_table(fb_neg_assigned[-2])
+```
+
+### What proportion of all fungal nodes participating in negative fungal-bacterial edges could be assigned guild?
+All combinations tested (negative fungal-bacterial edges, positive fungal-bacterial, negative fungal-fungal, positive fungal-fungal) resulted in around this level of guild assignment
+```{r, echo=FALSE}
+# what proportion of fungal nodes could be assigned guild
+dim(fb_neg_assigned)[1] / dim(fbn)[1]
+```
+
+### Proportions of guilds in negative vs positive edges (fungal-bacterial edges)
+ 
+Fungi in **negative** fungal-bacterial edges
+```{r, echo=FALSE}
+table(fb_neg_assigned$fung_trophicMode)/length(fb_fung_neg)
+```
+
+Fungi in **positive** fungal-bacterial edges
+```{r, echo=FALSE}
+table(fb_pos_assigned$fung_trophicMode)/length(fb_fung_pos)
+```
+
+### Proportions of guilds in negative vs positive edges (fungal-fungal edges)
+Some differences exist but we're always only accounting for <50% of fungal OTUs
+<br>
+
+Fungi in **negative** fungal-fungal edges
+```{r, echo=FALSE}
+table(fonly_neg_assigned$fung_trophicMode)/nrow(fonly_neg)
+```
+
+Fungi in **positive** fungal-fungal edges
+```{r, echo=FALSE}
+table(fonly_pos_assigned$fung_trophicMode)/nrow(fonly_pos)
+```
+
+
+### A lot of overlap in the fungi that participate in negative vs positive edges
+```{r}
+length(fonly_fung_neg) # fungi in negative f-f edges
+length(fonly_fung_pos) # fungi in positive f-f edges
+
+sum(fonly_fung_neg %in% fonly_fung_pos) / length(fonly_fung_neg) # all fungi in neg edges are present in pos edge fungi
+
+
+length(fb_fung_neg) # fungi in negative f-b edges
+length(fb_fung_pos) # fungi in positive f-b edges
+
+sum(fb_fung_neg %in% fb_fung_pos) / length(fb_fung_neg) # most fungi in neg edges are present in pos edge fungi
+
+```
+
+### 23 OTUs only take part in negative fung-bact edges (are not present in positive f-b edges). These are their guild assignments (for those that could be assigned).
+
+```{r, echo=FALSE}
+neg_check <- setdiff(fb_fung_neg, fb_fung_pos)
+
+chk_df <- fb_neg_assigned[fb_neg_assigned$my_otu %in% neg_check,]
+
+rmarkdown::paged_table(chk_df[,-2])
+
+```
+
+
+
+

@@ -1,0 +1,315 @@
+---
+title: "05_habitat_robustness"
+output: html_document
+date: "2023-06-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=F}
+library(dplyr)
+library(igraph)
+library(ggnetwork)
+library(intergraph)
+library(brainGraph)
+library(patchwork)
+library(network)
+
+library(dplyr)
+library(tibble)
+
+options(bitmapType='cairo')
+```
+
+```{r}
+# stream, terrestrial, marine
+
+# robustness results from slurm
+fung_robustness <- readRDS("../intermediates/new_knockouts/fung_habitat_knockouts.rds")
+bact_robustness <- readRDS("../intermediates/new_knockouts/bact_habitat_knockouts.rds")
+cross_robustness <- readRDS("../intermediates/new_knockouts/cross_habitat_knockouts.rds")
+
+add_fulldownsamp_column <- function(df, string) {
+  df$full_or_downsamp <- string
+  return(df)
+}
+
+fung_robustness <- lapply(fung_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+bact_robustness <- lapply(bact_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+cross_robustness <- lapply(cross_robustness, function(x) lapply(x, function(y) add_fulldownsamp_column(y, "Full")))
+
+# downsampled network robustness results
+hab_bc <- readRDS("../intermediates/richtest_downsamp/hab_downsamp721_bc_knockouts.rds")
+hab_bc <- lapply(hab_bc, add_fulldownsamp_column, "Downsampled")
+
+hab_bc[[1]]$kingdom <- "Fungi"
+hab_bc[[2]]$kingdom <- "Fungi"
+hab_bc[[3]]$kingdom <- "Fungi"
+
+hab_bc[[4]]$kingdom <- "Bacteria"
+hab_bc[[5]]$kingdom <- "Bacteria"
+hab_bc[[6]]$kingdom <- "Bacteria"
+
+hab_bc[[7]]$kingdom <- "Interkingdom"
+hab_bc[[8]]$kingdom <- "Interkingdom"
+hab_bc[[9]]$kingdom <- "Interkingdom"
+```
+
+```{r}
+fung_bc_rob <- fung_robustness[[1]]
+fung_invbc_rob <- fung_robustness[[2]]
+fung_random_rob <- fung_robustness[[3]]
+
+bact_bc_rob <- bact_robustness[[1]]
+bact_invbc_rob <- bact_robustness[[2]]
+bact_random_rob <- bact_robustness[[3]]
+
+cross_bc_rob <- cross_robustness[[1]]
+cross_invbc_rob <- cross_robustness[[2]]
+cross_random_rob <- cross_robustness[[3]]
+
+
+all_stream <- rbind(fung_bc_rob[[1]], fung_invbc_rob[[1]], fung_random_rob[[1]],
+                        bact_bc_rob[[1]], bact_invbc_rob[[1]], bact_random_rob[[1]],
+                        cross_bc_rob[[1]], cross_invbc_rob[[1]], cross_random_rob[[1]],
+                    hab_bc[[1]], hab_bc[[4]], hab_bc[[7]]
+                        )
+all_stream$category <- paste(all_stream$type, all_stream$kingdom, sep="_")
+all_stream$habitat <- rep("Stream", nrow(all_stream))
+all_stream$category2 <- paste(all_stream$type, all_stream$habitat, sep = "_")
+
+
+all_terrestrial <- rbind(fung_bc_rob[[2]], fung_invbc_rob[[2]], fung_random_rob[[2]],
+                        bact_bc_rob[[2]], bact_invbc_rob[[2]], bact_random_rob[[2]],
+                        cross_bc_rob[[2]], cross_invbc_rob[[2]], cross_random_rob[[2]],
+                        hab_bc[[2]], hab_bc[[5]], hab_bc[[8]]
+                        )
+all_terrestrial$category <- paste(all_terrestrial$type, all_terrestrial$kingdom, sep="_")
+all_terrestrial$habitat <- rep("Terrestrial", nrow(all_terrestrial))
+all_terrestrial$category2 <- paste(all_terrestrial$type, all_terrestrial$habitat, sep = "_")
+
+
+all_marine <- rbind(fung_bc_rob[[3]], fung_invbc_rob[[3]], fung_random_rob[[3]],
+                        bact_bc_rob[[3]], bact_invbc_rob[[3]], bact_random_rob[[3]],
+                        cross_bc_rob[[3]], cross_invbc_rob[[3]], cross_random_rob[[3]],
+                    hab_bc[[3]], hab_bc[[6]], hab_bc[[9]]
+                        )
+all_marine$category <- paste(all_marine$type, all_marine$kingdom, sep="_")
+all_marine$habitat <- rep("Marine", nrow(all_marine))
+all_marine$category2 <- paste(all_marine$type, all_marine$habitat, sep = "_")
+
+```
+
+
+```{r}
+
+library(paletteer)
+kingdom_palette = paletteer_d("fishualize::Histiophryne_psychedelica")
+
+
+stream_bc_plot <- ggplot(all_stream, aes(x=removed.pct, y=comp.pct, color=kingdom,  linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Stream", linetype = "Type") +
+  scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        legend.position = "none",
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+terr_bc_plot <- ggplot(all_terrestrial, aes(x=removed.pct, y=comp.pct, color=kingdom, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Terrestrial", linetype = "Type") +
+   scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   guides(color = "none", linetype = "none", alpha = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+marine_bc_plot <- ggplot(all_marine, aes(x=removed.pct, y=comp.pct, color=kingdom, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Marine", linetype = "Type") +
+   scale_color_manual(values = kingdom_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size= 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+   #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) 
+
+
+library(patchwork)
+
+hab_plots <- stream_bc_plot + terr_bc_plot + marine_bc_plot
+
+
+#ggsave("../figures/aug2024_revisions/habitat_robust_by_habitat.pdf", hab_plots, height = 6, width = 19)
+#ggsave("../figures/aug2024_revisions/habitat_robust_by_habitat.png", hab_plots,  height = 6, width = 19)
+```
+
+# Fig 2 - bringing over code from watershed networks
+
+```{r}
+bc_plot <- readRDS("../intermediates/new_knockouts/wholews_robust_ggplot.rds")
+bc_plot <- bc_plot + scale_alpha_manual(values = c(0.3, 1))
+
+bc_plot <- bc_plot + theme(legend.position = "none")
+
+all <- bc_plot + stream_bc_plot + terr_bc_plot + marine_bc_plot + plot_layout(ncol = 2)
+
+ggsave("../figures/aug2024_revisions/watershedFULL_and_habitat_curves_by_kingdom_plusdownsampalpha.png", all, height = 10, width = 12)
+ggsave("../figures/aug2024_revisions/watershedFULL_and_habitat_curves_by_kingdom_plusdownsampalpha.pdf", all, height = 10, width = 12)
+```
+
+
+## By kingdom
+
+```{r}
+all_fung_dat <- rbind(all_stream[all_stream$kingdom=="Fungi",],
+                      all_terrestrial[all_terrestrial$kingdom=="Fungi",],
+                      all_marine[all_marine$kingdom=="Fungi",])
+
+all_bact_dat <- rbind(all_stream[all_stream$kingdom=="Bacteria",],
+                      all_terrestrial[all_terrestrial$kingdom=="Bacteria",],
+                      all_marine[all_marine$kingdom=="Bacteria",])
+
+all_cross_dat <- rbind(all_stream[all_stream$kingdom=="Interkingdom",],
+                      all_terrestrial[all_terrestrial$kingdom=="Interkingdom",],
+                      all_marine[all_marine$kingdom=="Interkingdom",])
+```
+
+
+```{r}
+habitat_palette <- c("#3F5671", "#83A1C3", "#B9D6B6")
+
+fung_bc_plot <- ggplot(all_fung_dat, aes(x=removed.pct, y=comp.pct, color=habitat, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Fungi", linetype = "Type") +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none", alpha = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+
+bact_bc_plot <- ggplot(all_bact_dat, aes(x=removed.pct, y=comp.pct, color=habitat, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Bacteria", linetype = "Type") +
+  theme(legend.key = element_rect(fill="white")) +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  guides(color = "none", linetype = "none", alpha = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+cross_bc_plot <- ggplot(all_cross_dat, aes(x=removed.pct, y=comp.pct, color=habitat, linetype = type, alpha = full_or_downsamp)) +
+  geom_line(linewidth = 1.5) +
+  labs(x="Fraction of nodes removed", y="Fractional size of largest connected component",
+color = "Category", shape = "Kingdom", title = "Interkingdom", linetype = "Type") +
+  scale_color_manual(values = habitat_palette) +
+  scale_alpha_manual(values = c(0.3, 1)) +
+  theme(legend.key = element_rect(fill="white")) +
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
+        panel.background=element_blank(),
+        plot.title=element_text(size=16),
+        axis.title = element_text(size=16),
+        axis.text = element_text(color = "black", size = 12),
+        title=element_text(size=12)) +
+  theme(legend.text = element_text(size=12)) +
+   theme(legend.title = element_text(size=14)) +
+  #guides(color = "none") +
+    scale_linetype_manual(values = c("btwncent" = "solid", "inverse_btwncent" = "dashed", 
+                                   "random" = "dotted")) +
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0))) +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(limits = c(0,1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0, 0))
+
+
+bb = fung_bc_plot + bact_bc_plot + cross_bc_plot
+
+ggsave("../figures/aug2024_revisions/habitat_robust_by_kingdom_withdownsampalpha.pdf", bb, height = 5.5, width = 18)
+ggsave("../figures/aug2024_revisions/habitat_robust_by_kingdom_withdownsampalpha.png", bb, height = 5.5, width = 18)
+```
+
+
+
+

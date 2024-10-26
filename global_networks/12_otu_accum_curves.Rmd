@@ -1,0 +1,79 @@
+---
+title: "12_otu_accum_curves"
+output: html_document
+date: "2024-04-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+```{r}
+
+library(iNEXT)
+library(ggplot2)
+library(ggpubr)
+library(phyloseq)
+
+```
+
+```{r}
+# import data
+fung_abun <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds") # 2128 otus, 1384 samples
+bact_abun <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds") # 13468 otus, 1384 samples
+
+fung_meta <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("~/hynson_koastore/kaciekaj/waimea_current/intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+
+fung_abun <- fung_abun[row.names(fung_abun)!="dummy",]
+bact_abun <- bact_abun[row.names(bact_abun)!="dummy",]
+```
+
+
+## OTU Accumulation Curves
+
+```{r}
+empos <- unique(fung_meta$empo_3)
+
+get_empo_abun <- function(empo, abun, meta) {
+  sub_met <- meta[meta$empo_3==empo,]
+  
+  sub_abun <- abun[,names(abun) %in% sub_met$x_seq_id]
+  sub_abun <- sub_abun[rowSums(sub_abun)>0,] 
+  
+  sums <- rowSums(sub_abun)
+  
+  return(sums)
+}
+
+fung_sum_list <- lapply(empos, get_empo_abun, abun = fung_abun, meta = fung_meta)
+
+f_max <- max(unlist(lapply(fung_sum_list, sum)))
+
+# inext
+print("starting fungal inext")
+fung_empo_accum <- iNEXT(fung_sum_list, nboot = 200, endpoint = f_max*2)
+
+saveRDS(fung_empo_accum, "~/hynson_koastore/kaciekaj/waimea_current/intermediates/fung_p20_otu_accum_inext.rds")
+
+print("fungal inext finished)")
+
+
+
+bact_sum_list <- lapply(empos, get_empo_abun, abun = bact_abun, meta = bact_meta)
+
+b_max <- max(unlist(lapply(bact_sum_list, sum)))
+
+# inext
+print("starting bact inext")
+bact_empo_accum <- iNEXT(bact_sum_list, nboot = 200, endpoint = b_max*2)
+
+saveRDS(bact_empo_accum, "~/hynson_koastore/kaciekaj/waimea_current/intermediates/bact_p20_otu_accum_inext.rds")
+
+print("bact inext finished)")
+
+
+```

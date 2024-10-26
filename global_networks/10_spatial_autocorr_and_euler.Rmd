@@ -1,0 +1,196 @@
+---
+title: "14_mantel"
+output: html_document
+date: "2023-07-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(geosphere)
+library(ade4)
+library(vegan)
+```
+
+```{r}
+# import data
+fung_abun <- readRDS("../intermediates/global/downsampled_fung_otu_table.rds")
+bact_abun <- readRDS("../intermediates/global/downsampled_bact_otu_table.rds")
+# fung_abun <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_table_matched_up.rds")
+# bact_abun <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_table_matched_up.rds")
+
+fung_abun <- fung_abun[rownames(fung_abun)!="dummy",]
+bact_abun <- bact_abun[rownames(bact_abun)!="dummy",]
+
+fung_meta <- readRDS("../intermediates/global/fully_filtered_p20_fungal_otu_metadata_matched_up.rds")
+bact_meta <- readRDS("../intermediates/global/fully_filtered_p20_bact_otu_metadata_matched_up.rds")
+
+fung_meta <- fung_meta[fung_meta$sample_id %in% names(fung_abun),]
+bact_meta <- bact_meta[bact_meta$sample_id %in% names(bact_abun),]
+```
+
+```{r}
+fung_geo <- data.frame(long = fung_meta$long,lat = fung_meta$lat)
+rownames(fung_geo) <- fung_meta$sample_id
+fung_geo <- fung_geo[order(rownames(fung_geo)),]
+
+all(rownames(fung_geo) == colnames(fung_abun)) 
+
+dist_geo <- distm(fung_geo, fun = distHaversine)
+samp_geo_dist <- as.dist(dist_geo) 
+
+##distances between samples
+bray_mat <- vegdist(t(fung_abun), method = "bray")
+
+fung_geo_mantel <- mantel(bray_mat, samp_geo_dist, method = "spearman", permutations=999, na.rm=TRUE)
+
+saveRDS(fung_geo_mantel, "../intermediates/global/down_geo_mantel_fung.rds")
+
+
+```
+
+```{r}
+bact_geo <- data.frame(long = bact_meta$long,lat = bact_meta$lat)
+rownames(bact_geo) <- bact_meta$sample_id
+bact_geo <- bact_geo[order(rownames(bact_geo)),]
+
+all(rownames(bact_geo) == colnames(bact_abun)) 
+
+bact_dist_geo <- distm(bact_geo, fun = distHaversine)
+bact_samp_geo_dist <- as.dist(bact_dist_geo) 
+
+##distances between samples
+bact_bray_mat <- vegdist(t(bact_abun), method = "bray")
+
+bact_mantel <- mantel(bact_bray_mat, bact_samp_geo_dist, method = "spearman", permutations=999, na.rm=TRUE)
+
+saveRDS(bact_mantel, "../intermediates/global/down_geo_mantel_bact.rds")
+
+
+```
+
+## Are OTUs shared across sample types
+
+```{r}
+library(eulerr)
+
+habs <- c("Terrestrial","Riverine", "Marine")
+
+
+
+make_emp_list <- function(meta_table, otu_table) {
+  
+  empo3 <- unique(meta_table$empo_3)
+  emp_list <- list()
+  
+  for (e in empo3) {
+    sub_met <- meta_table[which(meta_table$empo_3==e),]
+    abun <- otu_table[,which(names(otu_table) %in% sub_met$x_seq_id)]
+    abun <- data.frame(abun)
+    #abun <- abun[which(rowSums(abun) > 0),]
+    abun <- data.frame(abun)
+    
+    otu_sums <- data.frame(rowSums(abun))
+    #otu_sums$sample_freq <- apply(abun, 1, function(c)sum(c!=0))
+    #names(otu_sums) <- c("otu_abundance", "sample_freq")
+    #otu_sums$tot_samps <- ncol(abun)
+    #otu_sums$prev <- otu_sums$sample_freq/ncol(abun)
+    
+    otu_sums <- rownames_to_column(otu_sums, "ID")
+    #otu_sums <- arrange(otu_sums, desc(sample_freq))
+    otu_sums <- column_to_rownames(otu_sums, "ID")
+    
+    #otu_sums <- otu_sums[otu_sums$prev>=0.2,] # set prevalence level here
+    
+    
+    emp_list[[e]] <- otu_sums
+  }
+  
+  return(emp_list)
+}
+
+#sites <- names(fung_otus_by_site)
+
+
+fung_emp_otu_sums <- make_emp_list(fung_meta, fung_abun)
+
+names(fung_emp_otu_sums) <- unique(fung_meta$empo_3)
+
+
+
+# multi_merge_matrix <- function(matrix_list) {
+#   
+#   r <- merge(matrix_list[[1]], matrix_list[[2]], by="row.names", all=TRUE)
+# # ASVs become a row, change back to rownames
+# rownames(r) <- r[,1]
+# # remove the column where the ASVs just were so the next merge works
+# r[,1] <- NULL
+# 
+#   for (i in 3:length(matrix_list)) {
+#   r <- merge(r, matrix_list[[i]], by="row.names", all=T)
+#   rownames(r) <- r[,1]
+#   r[,1] <- NULL
+#   }
+# 
+# r <- as(r, "matrix")
+# 
+# r[is.na(r)] <- 0
+# 
+# return(r)
+# 
+# }
+
+
+
+#all_dat <- as.data.frame(multi_merge_matrix(fung_emp_otu_sums_by_hab))
+
+fung_all_dat <- do.call("cbind", fung_emp_otu_sums)
+
+names(fung_all_dat) <- names(fung_emp_otu_sums)
+
+
+fung_all_dat_bool <- apply(fung_all_dat, 2, function(x) ifelse(x>0, T, F))
+fung_all_dat_bool <- fung_all_dat_bool[rowSums(fung_all_dat_bool)>0,]
+
+saveRDS(fung_all_dat_bool, "../intermediates/global/empo_bool_data_for_euler_fung.rds")
+
+# samp_euler <- euler(all_dat_bool)
+# myplot <- plot(samp_euler, fills=TRUE, quantities=TRUE)
+
+fung_euler_results <- readRDS("../intermediates/global/euler_data_by_empo_fung.rds")
+
+fung_eu_plot <- plot(fung_euler_results, quantities = T)
+
+
+
+
+## bact
+
+bact_emp_otu_sums <- make_emp_list(bact_meta, bact_abun)
+
+names(bact_emp_otu_sums) <- unique(bact_meta$empo_3)
+
+bact_all_dat <- do.call("cbind", bact_emp_otu_sums)
+
+names(bact_all_dat) <- names(bact_emp_otu_sums)
+
+
+bact_all_dat_bool <- apply(bact_all_dat, 2, function(x) ifelse(x>0, T, F))
+bact_all_dat_bool <- bact_all_dat_bool[rowSums(bact_all_dat_bool)>0,]
+
+saveRDS(bact_all_dat_bool, "../intermediates/global/empo_bool_data_for_euler_bact.rds")
+
+
+bact_euler_results <- readRDS("../intermediates/global/euler_data_by_empo_bact.rds")
+
+bact_eu_plot <- plot(bact_euler_results, quantities = T)
+
+
+# png("../figures/global/bact_empo_euler.png", width=700, height=900)
+# bact_eu_plot
+# dev.off()
+
+```
+

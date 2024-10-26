@@ -1,0 +1,386 @@
+---
+title: "07_network_metrics"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(igraph)
+library(ggnetwork)
+library(network)
+library(intergraph)
+
+library(dplyr)
+library(tibble)
+library(pbmcapply)
+library(reshape2)
+```
+
+```{r}
+options(bitmapType='cairo')
+```
+
+
+```{r}
+# import igraph objects
+cross20_igraph <- readRDS("../intermediates/global/cross20_igraph.rds")
+fung20_igraph <- readRDS("../intermediates/global/fung20_igraph.rds")
+bact20_igraph <- readRDS("../intermediates/global/bact20_igraph.rds")
+
+```
+
+
+### Goal: calculate network metrics for all three networks, tabulate
+
+
+```{r}
+
+all_nets <- list(Fungi = fung20_igraph,
+                 Bacteria = bact20_igraph,
+                 Cross = cross20_igraph)
+
+# subset to only connected nodes (only affects fungi)
+#all_nets <- lapply(all_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+
+## DEGREE
+deg <- sapply(all_nets, degree)
+
+## BETWEENNESS CENTRALITY
+bc <- pbmclapply(all_nets, betweenness, mc.cores = detectCores() - 1)
+saveRDS(bc, "../intermediates/global/fullwsnet_bc_scores.rds")
+
+
+## MODULARITY
+new_mod <- c(readRDS("../intermediates/global/fung_netcarto_results.rds")[[2]],
+             readRDS("../intermediates/global/bact_netcarto_results.rds")[[2]],
+             readRDS("../intermediates/global/cross_netcarto_results.rds")[[2]])
+
+
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+conn <- sapply(all_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+num_nodes <- sapply(all_nets, gorder)
+num_edges <- sapply(all_nets, gsize)
+
+eton_ratio <- num_edges / num_nodes
+
+
+# put it all in a table
+metric_table <- data.frame(rbind(new_mod, unlist(conn), eton_ratio))
+rownames(metric_table) <- c("Modularity", "Connectance", "Edge to Node Ratio")
+
+metric_table <- metric_table %>% mutate_if(is.numeric, round, digits=3)
+
+domains <- c("Fungi", "Bacteria", "Interkingdom")
+names(metric_table) <- domains
+
+
+mt2 <- rownames_to_column(metric_table)
+
+mt_long <- melt(mt2, id.vars = "rowname", variable.name = "category", value.name = "value")
+names(mt_long) <- c("Metric", "Domain", "value")
+
+
+## PLOT
+
+mets <- unique(mt_long$Metric)
+plotlist <- list()
+
+library(wesanderson)
+
+for (a_metric in mets) {
+  dat <- mt_long[mt_long$Metric==a_metric,]
+  dat$Domain <- factor(dat$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  
+  bar <- ggplot(dat, aes(x=Domain, y=value, fill=Domain)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = wes_palette("IsleofDogs2")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    ggtitle(a_metric)
+  
+  plotlist[[a_metric]] <- bar
+  
+}
+
+# adjust y lim
+plotlist[[3]] <- plotlist[[3]] +
+                          scale_y_continuous(breaks = seq(0, 50, 10),
+                                             limits = c(c(0, 50)))
+
+
+
+## node metric boxplots
+deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(deg[[i]])),
+                   metric = rep("degree", length(deg[[i]])),
+                   value = deg[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  deg_dat[[i]] <- df
+}
+
+deg_all <- do.call("rbind", deg_dat)
+deg_all$log_val <- log(deg_all$value + 1)
+
+
+bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(bc[[i]])),
+                   metric = rep("betweenness", length(bc[[i]])),
+                   value = bc[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  bc_dat[[i]] <- df
+}
+
+bc_all <- do.call("rbind", bc_dat)
+bc_all$log_val <- log(bc_all$value + 1)
+
+
+deg_boxplot <- ggplot(deg_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    #scale_y_continuous(breaks = seq(0, 7, 1), limits = c(c(0, 7))) +
+    scale_fill_manual(values = wes_palette("IsleofDogs2")[2:4]) +
+    scale_color_manual(values = wes_palette("IsleofDogs2")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Degree, Log-transformed")
+
+
+bc_boxplot <- ggplot(bc_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    scale_fill_manual(values = wes_palette("IsleofDogs2")[2:4]) +
+    scale_color_manual(values = wes_palette("IsleofDogs2")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Betweenness Centrality, Log-transformed")
+
+
+
+library(patchwork)
+
+all_plots <- deg_boxplot + bc_boxplot + plot_spacer() + plotlist[[1]] + 
+             plotlist[[2]] + plotlist[[3]] + plot_layout(ncol=3)
+
+ggsave("../figures/aug2024_revisions/metrics_bars/fullwatershed_network_metric_barplotsv2.png", width=19, height=9.5)
+ggsave("../figures/aug2024_revisions/metrics_bars/fullwatershed_network_metric_barplotsv2.pdf", width=19, height=9.5)
+
+```
+
+
+# Downsampled networks
+Note, names are being overwritten (do not switch between first and latter halves of this Rmd)
+
+```{r}
+x = readRDS("../intermediates/richtest_downsamp/watershed721_igraphs.rds")
+# import igraph objects
+cross20_igraph <- x[[3]]
+fung20_igraph <- x[[1]]
+bact20_igraph <- x[[2]]
+
+```
+
+
+### Goal: calculate network metrics for all three networks, tabulate
+
+
+```{r}
+
+all_nets <- list(Fungi = fung20_igraph,
+                 Bacteria = bact20_igraph,
+                 Cross = cross20_igraph)
+
+# subset to only connected nodes (only affects fungi)
+#all_nets <- lapply(all_nets, function(x) subgraph(x, igraph::degree(x)>0))
+
+
+## DEGREE
+deg <- lapply(all_nets, degree)
+
+## BETWEENNESS CENTRALITY
+bc <- pbmclapply(all_nets, betweenness, mc.cores = detectCores() - 1)
+
+
+## MODULARITY
+new_mod <- readRDS("../intermediates/global/ws_downsamp721_netcarto.rds")
+
+
+## CONNECTANCE
+connectance <- function(g) {
+  ecount(g) / vcount(g)^2 
+}
+
+
+conn <- sapply(all_nets, connectance)
+
+
+## EDGE TO NODE RATIO
+num_nodes <- sapply(all_nets, gorder)
+num_edges <- sapply(all_nets, gsize)
+
+eton_ratio <- num_edges / num_nodes
+
+
+# put it all in a table
+metric_table <- data.frame(rbind(new_mod, unlist(conn), eton_ratio))
+rownames(metric_table) <- c("Modularity", "Connectance", "Edge to Node Ratio")
+
+metric_table <- metric_table %>% mutate_if(is.numeric, round, digits=3)
+
+domains <- c("Fungi", "Bacteria", "Interkingdom")
+names(metric_table) <- domains
+
+
+mt2 <- rownames_to_column(metric_table)
+
+mt_long <- melt(mt2, id.vars = "rowname", variable.name = "category", value.name = "value")
+names(mt_long) <- c("Metric", "Domain", "value")
+
+
+## PLOT
+
+mets <- unique(mt_long$Metric)
+plotlist <- list()
+
+library(wesanderson)
+
+for (a_metric in mets) {
+  dat <- mt_long[mt_long$Metric==a_metric,]
+  dat$Domain <- factor(dat$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  
+  bar <- ggplot(dat, aes(x=Domain, y=value, fill=Domain)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values = paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    ggtitle(a_metric)
+  
+  plotlist[[a_metric]] <- bar
+  
+}
+
+# adjust y lim
+plotlist[[3]] <- plotlist[[3]] +
+                          scale_y_continuous(breaks = seq(0, 8, 2),
+                                             limits = c(c(0, 8)))
+
+
+
+## node metric boxplots
+deg_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(deg[[i]])),
+                   metric = rep("degree", length(deg[[i]])),
+                   value = deg[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  deg_dat[[i]] <- df
+}
+
+deg_all <- do.call("rbind", deg_dat)
+deg_all$log_val <- log(deg_all$value + 1)
+
+
+bc_dat <- list()
+for (i in 1:3) {
+  df <- data.frame(Domain = rep(domains[[i]], length(bc[[i]])),
+                   metric = rep("betweenness", length(bc[[i]])),
+                   value = bc[[i]])
+  df$Domain <- factor(df$Domain, levels=c("Fungi", "Bacteria", "Interkingdom"))
+  bc_dat[[i]] <- df
+}
+
+bc_all <- do.call("rbind", bc_dat)
+bc_all$log_val <- log(bc_all$value + 1)
+
+
+deg_boxplot <- ggplot(deg_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    #scale_y_continuous(breaks = seq(0, 7, 1), limits = c(c(0, 7))) +
+    scale_fill_manual(values = paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    scale_color_manual(values = paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Degree, Log-transformed")
+
+
+bc_boxplot <- ggplot(bc_all, aes(x=Domain, y=log_val, fill = Domain)) +
+    geom_jitter(size=0.4, alpha=0.4, aes(color=Domain)) +
+    geom_boxplot() +
+    theme_classic() +
+    scale_fill_manual(values = paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    scale_color_manual(values = paletteer_d("vapoRwave::floralShoppe")[2:4]) +
+    theme(axis.text.x = element_text(size=12, colour="black"), 
+          panel.grid.major=element_blank(), 
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(), 
+          axis.line = element_line(colour="black"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_text(size=12, colour="black"),
+          legend.position = "none") +
+    labs(title = "Betweenness Centrality, Log-transformed")
+
+
+
+library(patchwork)
+
+all_plots <- deg_boxplot + bc_boxplot + plot_spacer() + plotlist[[1]] + 
+             plotlist[[2]] + plotlist[[3]] + plot_layout(ncol=3)
+
+ggsave("../figures/aug2024_revisions/metrics_bars/downsampwatershed_network_metric_barplotsv2.png", width=19, height=9.5)
+ggsave("../figures/aug2024_revisions/metrics_bars/downsampwatershed_network_metric_barplotsv2.pdf", width=19, height=9.5)
+
+```
+
