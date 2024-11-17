@@ -26,4 +26,6 @@ diverse habitats and hosts to infer universally stabilizing network properties o
 ## Reproducibility
 To reproduce analyses, code files should be run in order within a directory, following this order of directories: global_networks, habitat_networks, gradient_networks, all_networks. Intermediate and input files are provided for the starting scripts (those beginning in "01"). To conserve repository space, phyloseq objects are provided for the fungal and bacterial datasets (located in "intermediates"). 
 
-Network scripts (located in "networks") were run on the University of Hawaii's high performance computer. Demonstration code is provided in network_generation_demo.R using a randomly subsampled data from this study (~30 second runtime). 
+Network generation scripts (located in "networks") were run on the University of Hawaii's high performance computer using the SpiecEasi package paired with batchtools. Demonstration code is provided in network_generation_demo.R using a randomly subsampled data from this study (~30 second runtime). 
+
+Intermediate igraph files are provided to run network analysis code. 
