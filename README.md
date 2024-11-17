@@ -29,3 +29,7 @@ To reproduce analyses, code files should be run in order within a directory, fol
 Network generation scripts (located in "networks") were run on the University of Hawaii's high performance computer using the SpiecEasi package paired with batchtools. Demonstration code is provided in network_generation_demo.R using a randomly subsampled data from this study (~30 second runtime). 
 
 Intermediate igraph files are provided to run network analysis code. 
+
+Packages with dependencies are listed in packages_with_dependencies.csv
+
+
